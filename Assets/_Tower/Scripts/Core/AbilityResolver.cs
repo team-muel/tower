@@ -14,16 +14,18 @@ namespace Tower.Core
 
         private readonly GridMap map;
         private readonly StatusBoard statusBoard;
+        private readonly ICombatObserver combatObserver;
 
-        private AbilityResolver(GridMap map, StatusBoard statusBoard)
+        private AbilityResolver(GridMap map, StatusBoard statusBoard, ICombatObserver combatObserver)
         {
             this.map = map;
             this.statusBoard = statusBoard;
+            this.combatObserver = combatObserver;
         }
 
         public StatusBoard StatusBoard => statusBoard;
 
-        public static Result<AbilityResolver> Create(GridMap map, StatusBoard statusBoard)
+        public static Result<AbilityResolver> Create(GridMap map, StatusBoard statusBoard, ICombatObserver combatObserver = null)
         {
             if (map == null)
             {
@@ -35,7 +37,7 @@ namespace Tower.Core
                 return Result<AbilityResolver>.Failure("Status board is required.");
             }
 
-            return Result<AbilityResolver>.Success(new AbilityResolver(map, statusBoard));
+            return Result<AbilityResolver>.Success(new AbilityResolver(map, statusBoard, combatObserver));
         }
 
         public Result Execute(TurnEngine engine, UseAbilityCommand command)
@@ -172,12 +174,13 @@ namespace Tower.Core
             var power = ability.BasePower * tagMultiplier * amplifyMultiplier;
             var raw = power + caster.State.Definition.Attack - target.State.Definition.Defense;
             var damage = Math.Max(1, (int)Math.Round(raw, MidpointRounding.AwayFromZero));
-            return ApplyDamage(engine, target, damage);
+            return ApplyDamage(engine, caster, target, ability, damage);
         }
 
-        private Result ApplyDamage(TurnEngine engine, CombatantRef target, int damage)
+        private Result ApplyDamage(TurnEngine engine, CombatantRef caster, CombatantRef target, AbilityDef ability, int damage)
         {
             var state = target.State;
+            var appliedDamage = Math.Min(state.CurrentHp, damage);
             var newHp = Math.Max(0, state.CurrentHp - damage);
             var updated = CharacterState.Create(
                 state.Definition,
@@ -196,6 +199,15 @@ namespace Tower.Core
             {
                 return applied;
             }
+
+            combatObserver?.OnDamageApplied(
+                engine,
+                new CombatDamageEvent(
+                    caster.UnitId,
+                    target.UnitId,
+                    ability.Id,
+                    appliedDamage,
+                    newHp <= 0));
 
             if (newHp <= 0)
             {

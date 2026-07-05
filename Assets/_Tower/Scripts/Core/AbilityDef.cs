@@ -24,5 +24,27 @@ namespace Tower.Core
         public int BasePower => basePower;
         public float AmplificationMultiplier => amplificationMultiplier;
         public AbilityTargetType TargetType => targetType;
+
+        public static AbilityDef CreateRuntime(
+            string id,
+            AbilityTag tag,
+            int basePower,
+            int range,
+            AbilityTargetType targetType,
+            MarkDef targetMark = null,
+            float amplificationMultiplier = 1f,
+            string displayName = null)
+        {
+            var ability = CreateInstance<AbilityDef>();
+            ability.id = id;
+            ability.displayName = displayName ?? id;
+            ability.tag = tag;
+            ability.targetMark = targetMark;
+            ability.range = range;
+            ability.basePower = basePower;
+            ability.amplificationMultiplier = amplificationMultiplier;
+            ability.targetType = targetType;
+            return ability;
+        }
     }
 }
