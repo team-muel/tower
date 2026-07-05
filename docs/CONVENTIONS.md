@@ -34,4 +34,4 @@ Characters, passives, abilities, marks, and tags should be extended by adding da
 
 ## Combat Simulation
 
-Run the AI-vs-AI balance smoke in Unity batchmode with the same environment required for tests: set `ALLUSERSPROFILE=C:\ProgramData`, `ProgramData=C:\ProgramData`, and `TMP=%TEMP%`, then call `Unity.exe -quit -batchmode -projectPath C:\dev\Tower -executeMethod Tower.EditorTools.SimRunner.RunDefault -logFile -`. The runner writes JSON to `C:\dev\_setup\sim-result.json` by default; override with `-simOutput <path>` and tune the sample with `-simSeed <int>`, `-simBattles <int>`, or `-simMaxRounds <int>`.
+Run the AI-vs-AI balance smoke in Unity batchmode with the same environment required for tests: set `ALLUSERSPROFILE=C:\ProgramData`, `ProgramData=C:\ProgramData`, and `TMP=%TEMP%`, then call `Unity.exe -quit -batchmode -projectPath C:\Users\fancy\Tower -executeMethod Tower.EditorTools.SimRunner.RunDefault -logFile -`. The runner writes JSON to `C:\dev\_setup\sim-result.json` by default; override with `-simOutput <path>` and tune the sample with `-simSeed <int>`, `-simBattles <int>`, or `-simMaxRounds <int>`.

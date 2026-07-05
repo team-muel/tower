@@ -22,11 +22,11 @@
 3. asmdef 구조: `Tower.Core`(데이터·규칙, 엔진 비의존 로직 우선) / `Tower.Combat` / `Tower.Gen` / `Tower.UI`. 코어 로직은 MonoBehaviour 밖에서 — 유닛 테스트 가능하게.
 4. T3(턴 엔진)·T4(능력 파이프라인)는 유닛 테스트(Unity Test Framework, EditMode) 없이 머지 금지.
 5. 하드코딩 금지 원칙: 성향·패시브·능력·태그는 데이터(ScriptableObject) 추가로 확장되게. 스위치문 분기 증식 금지.
-6. 커밋: `git -C C:\dev\Tower ...` 형태로 절대경로 사용 (cwd 신뢰 금지). gpgsign 이슈 시 `-c commit.gpgsign=false`.
+6. 커밋: `git -C C:\Users\fancy\Tower ...` 형태로 절대경로 사용 (cwd 신뢰 금지). gpgsign 이슈 시 `-c commit.gpgsign=false`.
 7. 시크릿 절대 커밋 금지.
 8. 작업 종료 시: PR 링크와 결정 사항을 vault `00 Current Status.md` 진행표에 갱신 (쓰기 불가 환경이면 PR 본문에 상세히).
 
 ## 검증
 
-- 컴파일 확인: Unity 배치모드 `-quit -batchmode -projectPath C:\dev\Tower -logFile -` (라이선스 활성화 전이면 스킵하고 PR에 명시).
+- 컴파일 확인: Unity 배치모드 `-quit -batchmode -projectPath C:\Users\fancy\Tower -logFile -` (라이선스 활성화 전이면 스킵하고 PR에 명시).
 - EditMode 테스트: `-runTests -testPlatform EditMode`.
