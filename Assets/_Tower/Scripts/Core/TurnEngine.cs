@@ -11,13 +11,15 @@ namespace Tower.Core
         private readonly Dictionary<string, CombatantRef> combatants;
         private readonly HashSet<string> defeatedUnitIds = new HashSet<string>();
         private readonly IActionPresenter presenter;
+        private readonly IAbilityExecutor abilityExecutor;
         private List<string> roundOrder = new List<string>();
         private int activeOrderIndex;
 
-        private TurnEngine(Dictionary<string, CombatantRef> combatants, IActionPresenter presenter)
+        private TurnEngine(Dictionary<string, CombatantRef> combatants, IActionPresenter presenter, IAbilityExecutor abilityExecutor)
         {
             this.combatants = combatants;
             this.presenter = presenter ?? new NullPresenter();
+            this.abilityExecutor = abilityExecutor;
             RoundNumber = 1;
             BeginRound();
             UpdateCombatEnd();
@@ -29,7 +31,10 @@ namespace Tower.Core
         public CombatTeam? WinningTeam { get; private set; }
         public IReadOnlyList<string> CurrentRoundOrder => roundOrder.AsReadOnly();
 
-        public static Result<TurnEngine> Create(IEnumerable<CombatantRef> combatants, IActionPresenter presenter = null)
+        public static Result<TurnEngine> Create(
+            IEnumerable<CombatantRef> combatants,
+            IActionPresenter presenter = null,
+            IAbilityExecutor abilityExecutor = null)
         {
             if (combatants == null)
             {
@@ -62,7 +67,7 @@ namespace Tower.Core
                 return Result<TurnEngine>.Failure("Combat requires at least two living teams.");
             }
 
-            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter));
+            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter, abilityExecutor));
         }
 
         public CombatantRef GetCombatant(string unitId)
@@ -190,11 +195,29 @@ namespace Tower.Core
                 return Result.Failure("Ability id is required.");
             }
 
+            if (abilityExecutor != null)
+            {
+                // T4 seam: resolve the ability before the action is consumed so
+                // failed uses (range, target, line of sight) do not cost the turn.
+                var execution = abilityExecutor.Execute(this, command);
+                if (execution.IsFailure)
+                {
+                    return execution;
+                }
+            }
+
             Present(new TurnPresentationEvent(
                 TurnPresentationEventType.Ability,
                 command.UnitId,
                 abilityId: command.AbilityId,
                 targetUnitId: command.TargetUnitId));
+
+            if (IsCombatEnded || CurrentTurn == null)
+            {
+                // Execution ended the combat (e.g. the last enemy was defeated).
+                return Result.Success();
+            }
+
             CurrentTurn = new TurnState(CurrentTurn.UnitId, CurrentTurn.RemainingMovement, false);
             AdvanceTurn();
             return Result.Success();

@@ -29,13 +29,15 @@ namespace Tower.Core
 
     public sealed class UseAbilityCommand : TurnCommand
     {
-        public UseAbilityCommand(string unitId, string abilityId, string targetUnitId = null) : base(unitId)
+        public UseAbilityCommand(string unitId, string abilityId, string targetUnitId = null, GridPos? targetCell = null) : base(unitId)
         {
             AbilityId = abilityId;
             TargetUnitId = targetUnitId;
+            TargetCell = targetCell;
         }
 
         public string AbilityId { get; }
         public string TargetUnitId { get; }
+        public GridPos? TargetCell { get; }
     }
 }
