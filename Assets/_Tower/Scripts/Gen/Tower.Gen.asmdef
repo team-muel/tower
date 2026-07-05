@@ -1,0 +1,16 @@
+{
+  "name": "Tower.Gen",
+  "rootNamespace": "Tower.Gen",
+  "references": [
+    "Tower.Core"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
