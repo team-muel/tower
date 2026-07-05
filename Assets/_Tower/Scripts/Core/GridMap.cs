@@ -167,6 +167,24 @@ namespace Tower.Core
             return TrySetOccupant(to, occupantId);
         }
 
+        public GridPos? FindOccupant(string occupantId)
+        {
+            if (string.IsNullOrEmpty(occupantId))
+            {
+                return null;
+            }
+
+            for (int i = 0; i < _cells.Length; i++)
+            {
+                if (_cells[i].OccupantId == occupantId)
+                {
+                    return new GridPos(i % Width, i / Width);
+                }
+            }
+
+            return null;
+        }
+
         private void EnsureInBounds(GridPos pos)
         {
             if (!InBounds(pos))
