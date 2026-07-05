@@ -2,7 +2,8 @@
   "name": "Tower.Combat",
   "rootNamespace": "Tower.Combat",
   "references": [
-    "Tower.Core"
+    "Tower.Core",
+    "Tower.Gen"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
