@@ -26,5 +26,31 @@ namespace Tower.Core
         public PassiveDef Passive => passive;
         public AbilityDef[] DefaultAbilities => defaultAbilities;
         public bool IsReturner => isReturner;
+
+        public static CharacterDef CreateRuntime(
+            string id,
+            string displayName,
+            int maxHp,
+            int attack,
+            int defense,
+            int speed,
+            DispositionType disposition,
+            AbilityDef[] defaultAbilities,
+            PassiveDef passive = null,
+            bool isReturner = false)
+        {
+            var definition = CreateInstance<CharacterDef>();
+            definition.id = id;
+            definition.displayName = displayName ?? id;
+            definition.maxHp = maxHp;
+            definition.attack = attack;
+            definition.defense = defense;
+            definition.speed = speed;
+            definition.disposition = disposition;
+            definition.passive = passive;
+            definition.defaultAbilities = defaultAbilities;
+            definition.isReturner = isReturner;
+            return definition;
+        }
     }
 }

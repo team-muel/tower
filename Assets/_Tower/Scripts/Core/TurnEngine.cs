@@ -12,15 +12,23 @@ namespace Tower.Core
         private readonly HashSet<string> defeatedUnitIds = new HashSet<string>();
         private readonly IActionPresenter presenter;
         private readonly IAbilityExecutor abilityExecutor;
+        private readonly ICombatObserver combatObserver;
         private List<string> roundOrder = new List<string>();
         private int activeOrderIndex;
+        private bool combatEndObserved;
 
-        private TurnEngine(Dictionary<string, CombatantRef> combatants, IActionPresenter presenter, IAbilityExecutor abilityExecutor)
+        private TurnEngine(
+            Dictionary<string, CombatantRef> combatants,
+            IActionPresenter presenter,
+            IAbilityExecutor abilityExecutor,
+            ICombatObserver combatObserver)
         {
             this.combatants = combatants;
             this.presenter = presenter ?? new NullPresenter();
             this.abilityExecutor = abilityExecutor;
+            this.combatObserver = combatObserver;
             RoundNumber = 1;
+            this.combatObserver?.OnCombatStarted(this);
             BeginRound();
             UpdateCombatEnd();
         }
@@ -34,7 +42,8 @@ namespace Tower.Core
         public static Result<TurnEngine> Create(
             IEnumerable<CombatantRef> combatants,
             IActionPresenter presenter = null,
-            IAbilityExecutor abilityExecutor = null)
+            IAbilityExecutor abilityExecutor = null,
+            ICombatObserver combatObserver = null)
         {
             if (combatants == null)
             {
@@ -67,7 +76,7 @@ namespace Tower.Core
                 return Result<TurnEngine>.Failure("Combat requires at least two living teams.");
             }
 
-            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter, abilityExecutor));
+            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter, abilityExecutor, combatObserver));
         }
 
         public CombatantRef GetCombatant(string unitId)
@@ -156,6 +165,7 @@ namespace Tower.Core
             if (command is SkipTurnCommand)
             {
                 Present(new TurnPresentationEvent(TurnPresentationEventType.Skip, command.UnitId));
+                NotifyCommandCommitted(command);
                 AdvanceTurn();
                 return Result.Success();
             }
@@ -180,6 +190,7 @@ namespace Tower.Core
                 CurrentTurn.UnitId,
                 CurrentTurn.RemainingMovement - command.Distance,
                 CurrentTurn.HasAction);
+            NotifyCommandCommitted(command);
             return Result.Success();
         }
 
@@ -211,6 +222,7 @@ namespace Tower.Core
                 command.UnitId,
                 abilityId: command.AbilityId,
                 targetUnitId: command.TargetUnitId));
+            NotifyCommandCommitted(command);
 
             if (IsCombatEnded || CurrentTurn == null)
             {
@@ -236,6 +248,7 @@ namespace Tower.Core
             CurrentTurn = roundOrder.Count > 0
                 ? new TurnState(roundOrder[activeOrderIndex], DefaultMovementPerTurn, true)
                 : null;
+            combatObserver?.OnRoundStarted(this, RoundNumber, roundOrder.AsReadOnly());
         }
 
         private void AdvanceTurn()
@@ -305,6 +318,12 @@ namespace Tower.Core
             IsCombatEnded = true;
             WinningTeam = livingTeams.Length == 1 ? livingTeams[0] : (CombatTeam?)null;
             CurrentTurn = null;
+            if (!combatEndObserved)
+            {
+                combatEndObserved = true;
+                combatObserver?.OnCombatEnded(this);
+            }
+
             return true;
         }
 
@@ -316,6 +335,11 @@ namespace Tower.Core
         private void Present(TurnPresentationEvent presentationEvent)
         {
             presenter.Present(presentationEvent, null);
+        }
+
+        private void NotifyCommandCommitted(TurnCommand command)
+        {
+            combatObserver?.OnCommandCommitted(this, command);
         }
     }
 }
