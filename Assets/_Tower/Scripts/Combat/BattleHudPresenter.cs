@@ -2,7 +2,7 @@ using System;
 using Tower.Core;
 using UnityEngine;
 
-namespace Tower.UI
+namespace Tower.Combat
 {
     // v0 temporary presenter that logs turn events within the 5-second bound.
     public sealed class BattleHudPresenter : IActionPresenter
@@ -12,6 +12,15 @@ namespace Tower.UI
         public BattleHudPresenter(Action<string> logSink = null)
         {
             this.logSink = logSink;
+        }
+
+        // Mode line for the player-turn HUD (v0: routed to the same log sink).
+        public void SetMode(string mode)
+        {
+            if (!string.IsNullOrEmpty(mode))
+            {
+                logSink?.Invoke("[MODE] " + mode);
+            }
         }
 
         public void Present(TurnPresentationEvent presentationEvent, Action completion)

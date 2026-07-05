@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using Tower.Core;
-using UnityEngine;
 
 namespace Tower.Combat
 {

@@ -14,7 +14,7 @@ namespace Tower.UI
             _label = GetComponentInChildren<Text>(true);
             if (_label != null)
             {
-                _label.text = (isActive ? "> " : "") + (!string.IsNullOrEmpty(unitId) ? unitId : "???")
+                _label.text = (isActive ? "> " : "") + (!string.IsNullOrEmpty(unitId) ? unitId : "???");
             }
         }
     }

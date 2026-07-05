@@ -1,31 +1,25 @@
 using System;
 using System.Collections.Generic;
+using Tower.Combat;
 using Tower.Core;
 using UnityEngine;
 
 namespace Tower.UI
 {
+    // v0 HUD: order buttons for active orders, turn-order strip, skip button.
+    // Templates are optional; missing templates simply render nothing.
     public sealed class CombatHudController : MonoBehaviour
     {
-        [Serializable]
-        public struct OrderReference
-        {
-            public UnitToken OrderSource;
-            public UnitToken OrderTarget;
-        }
-
         [SerializeField] private Transform _orderButtonContainer;
         [SerializeField] private OrderButton _orderButtonTemplate;
         [SerializeField] private Transform _turnOrderContainer;
         [SerializeField] private TurnOrderSlot _turnSlotTemplate;
         [SerializeField] private SkipButton _skipButtonTemplate;
-        [SerializeField] private CommandLogPresenter _commandLogPresenter;
-        [SerializeField] private Tower.Core.CombatDemoBootstrap _demoBootstrap;
+        [SerializeField] private CombatDemoBootstrap _demoBootstrap;
 
         private readonly List<OrderButton> _orderButtons = new();
         private readonly List<TurnOrderSlot> _turnSlots = new();
-        private readonly List<SkipButton> _skipButtons = new();
-        private IReadOnlyDictionary<string, OrderBoard.OrderRecord> _activeOrders = Array.Empty<KeyValuePair<string, OrderBoard.OrderRecord>>();
+        private IReadOnlyList<OrderBoard.OrderRecord> _activeOrders = Array.Empty<OrderBoard.OrderRecord>();
 
         public void Initialize(CombatDemoBootstrap demoBootstrap)
         {
@@ -34,15 +28,15 @@ namespace Tower.UI
             CreateTurnSlots(Array.Empty<string>());
         }
 
-        public void ShowOrderSlots(Tower.Core.CombatDemoBootstrap bootstrap, IReadOnlyDictionary<string, OrderBoard.OrderRecord> orderRegistry)
+        public void ShowOrderSlots(IReadOnlyList<OrderBoard.OrderRecord> activeOrders)
         {
-            _activeOrders = orderRegistry ?? Array.Empty<KeyValuePair<string, OrderBoard.OrderRecord>>();
+            _activeOrders = activeOrders ?? Array.Empty<OrderBoard.OrderRecord>();
             RefreshOrderButtons();
         }
 
         public void ShowTurnOrder(IReadOnlyList<string> order)
         {
-            CreateTurnSlots(order);
+            CreateTurnSlots(order ?? Array.Empty<string>());
         }
 
         public void Refresh()
@@ -63,10 +57,10 @@ namespace Tower.UI
                 return;
             }
 
-            foreach (var entry in _activeOrders)
+            foreach (var record in _activeOrders)
             {
                 OrderButton button = Instantiate(_orderButtonTemplate, _orderButtonContainer);
-                button.Initialize(entry.Key, entry.Value, OnOrderSent);
+                button.Initialize(record.OrderType, record.TargetUnitId, OnOrderSent);
                 button.gameObject.SetActive(true);
                 _orderButtons.Add(button);
             }
@@ -89,27 +83,31 @@ namespace Tower.UI
             {
                 SkipButton skipButton = Instantiate(_skipButtonTemplate, _turnOrderContainer);
                 skipButton.Initialize(OnSkipRequested);
-
             }
 
-            int slotIndex = _orderButtons.Count;
             for (int index = 0; index < order.Count; index++)
             {
                 TurnOrderSlot slot = Instantiate(_turnSlotTemplate, _turnOrderContainer);
-                slot.Initialize(order[index], false);
+                slot.Initialize(order[index], index == 0);
                 slot.gameObject.SetActive(true);
                 _turnSlots.Add(slot);
             }
         }
 
-        private void OnOrderSent(string targetUnitId, OrderBoard.OrderRecord record)
+        private void OnOrderSent(string targetUnitId)
         {
-            _demoBootstrap.IssueOrderToCompanions(targetUnitId);
+            if (_demoBootstrap != null)
+            {
+                _demoBootstrap.IssueOrderToCompanions(targetUnitId);
+            }
         }
 
         private void OnSkipRequested()
         {
-            _demoBootstrap.SkipHighlighting();
+            if (_demoBootstrap != null)
+            {
+                _demoBootstrap.SkipHighlighting();
+            }
         }
     }
 }

@@ -13,7 +13,7 @@ namespace Tower.Tests.EditMode
         private readonly List<Object> createdObjects = new List<Object>();
         private TurnEngine engine;
         private TileHighlighter highlighter;
-        private TestGridView gridView;
+        private GridView gridView;
         private UnitToken playerToken;
         private UnitToken allyToken;
         private OrderBoard orderBoard;
@@ -22,7 +22,7 @@ namespace Tower.Tests.EditMode
         [SetUp]
         public void SetUpEnvironment()
         {
-            gridView = new GameObject("Test Grid").AddComponent<TestGridView>();
+            gridView = new GameObject("Test Grid").AddComponent<GridView>();
             gridView.Build(new GridMap(6, 6));
 
             highlighter = new GameObject("Highlighter").AddComponent<TileHighlighter>();
@@ -128,11 +128,6 @@ namespace Tower.Tests.EditMode
 
         private void CreateEngine(params CharacterState[] states)
         {
-            SetField(playerToken, "Position", new GridPos(1, 1));
-            SetField(playerToken, "OccupantId", "player");
-            SetField(allyToken, "Position", new GridPos(1, 2));
-            SetField(allyToken, "OccupantId", "ally-x");
-
             var combatants = new List<CombatantRef>();
             for (int index = 0; index < states.Length; index++)
             {
@@ -161,8 +156,7 @@ namespace Tower.Tests.EditMode
         {
             var token = new GameObject("Token" + id).AddComponent<UnitToken>();
             createdObjects.Add(token);
-            SetField(token, "Position", pos);
-            SetField(token, "OccupantId", id);
+            token.Initialize(gridView, pos, id);
             return token;
         }
 
@@ -177,7 +171,13 @@ namespace Tower.Tests.EditMode
             SetField(definition, "attack", 0);
             SetField(definition, "defense", 0);
 
-            var result = CharacterState.Create(definition, 10, assignedAbilities: abilities ?? new AbilityDef[0]);
+            var list = new List<AbilityDef>(abilities ?? new AbilityDef[0]);
+            int pad = 0;
+            while (list.Count < 2)
+            {
+                list.Add(CreateAbility(id + "-fallback" + pad++, AbilityTag.None, power: 1));
+            }
+            var result = CharacterState.Create(definition, 10, assignedAbilities: list.ToArray());
             Assert.That(result.IsSuccess, Is.True, result.Error);
             return result.Value;
         }
@@ -199,9 +199,5 @@ namespace Tower.Tests.EditMode
             field.SetValue(target, value);
         }
 
-        private sealed class TestGridView : GridView
-        {
-            public new GridMap Map => base.Map;
-        }
     }
 }

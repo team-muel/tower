@@ -17,7 +17,7 @@ namespace Tower.Combat
         private TurnEngine _engine;
         private StatusBoard _statusBoard;
         private PlayerTurnController _playerController;
-        private IActionPresenter _presenter;
+        private BattleHudPresenter _presenter;
         private OrderBoard _orderBoard;
         private bool _combatEnded;
 

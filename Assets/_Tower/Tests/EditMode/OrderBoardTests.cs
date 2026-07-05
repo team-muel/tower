@@ -1,11 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using NUnit.Framework;
 using Tower.Core;
 
 namespace Tower.Tests.EditMode
 {
+    // Brief semantics (docs/tasks/T6.md + vault 13 §6 v0): orders are a per-combat
+    // budget (default 2). Spending is not refunded on expiry; the budget refills
+    // when a new combat starts / the combat ends.
     public sealed class OrderBoardTests
     {
         private OrderBoard orderBoard;
@@ -47,12 +47,13 @@ namespace Tower.Tests.EditMode
         public void IssueFocus_AfterEmptyingRemainingOrders_ReturnsFailure()
         {
             Assert.That(orderBoard.IssueFocus("ally-red", expiresOnRound: 2).IsSuccess, Is.True);
-            Assert.That(orderBoard.IssueFocus("ally-blue", expiresOnRound: 2).IsFailure, Is.True);
-            Assert.That(orderBoard.GetActiveOrders(), Has.Count.EqualTo(1));
+            Assert.That(orderBoard.IssueFocus("ally-blue", expiresOnRound: 2).IsSuccess, Is.True);
+            Assert.That(orderBoard.IssueFocus("ally-green", expiresOnRound: 2).IsFailure, Is.True);
+            Assert.That(orderBoard.GetActiveOrders(), Has.Count.EqualTo(2));
         }
 
         [Test]
-        public void AdvanceRound_ExpiresOrdersPastTheirRound()
+        public void AdvanceRound_ExpiresOrdersPastTheirRound_WithoutRefund()
         {
             Assert.That(orderBoard.IssueFocus("ally-red", expiresOnRound: 2).IsSuccess, Is.True);
 
@@ -60,14 +61,16 @@ namespace Tower.Tests.EditMode
             Assert.That(orderBoard.AdvanceRound(2), Is.Empty);
             Assert.That(orderBoard.HasFocus("ally-red"), Is.False);
             Assert.That(orderBoard.HasActiveOrders(), Is.False);
-            Assert.That(orderBoard.RemainingOrders(), Is.EqualTo(2));
+            // Spent orders are NOT refunded by expiry.
+            Assert.That(orderBoard.RemainingOrders(), Is.EqualTo(1));
         }
 
         [Test]
         public void StartNewCombat_ResetsEntries_AndRestoresCapacity()
         {
             Assert.That(orderBoard.IssueFocus("ally-red", expiresOnRound: 2).IsSuccess, Is.True);
-            Assert.That(orderBoard.IssueFocus("ally-blue", expiresOnRound: 2).IsFailure, Is.True);
+            Assert.That(orderBoard.IssueFocus("ally-blue", expiresOnRound: 2).IsSuccess, Is.True);
+            Assert.That(orderBoard.IssueFocus("ally-green", expiresOnRound: 2).IsFailure, Is.True);
 
             Assert.That(orderBoard.StartNewCombat().IsSuccess, Is.True);
             Assert.That(orderBoard.GetActiveOrders(), Is.Empty);
@@ -81,7 +84,8 @@ namespace Tower.Tests.EditMode
         {
             Assert.That(orderBoard.IssueFocus("ally-red", expiresOnRound: 2).IsSuccess, Is.True);
 
-            Assert.That(orderBoard.ConsumeActiveOrders().IsSuccess, Is.True);
+            var finalOrders = orderBoard.EndCombat();
+            Assert.That(finalOrders, Is.Empty);
             Assert.That(orderBoard.HasActiveOrders(), Is.False);
             Assert.That(orderBoard.GetActiveOrders(), Is.Empty);
             Assert.That(orderBoard.RemainingOrders(), Is.EqualTo(2));
@@ -109,7 +113,7 @@ namespace Tower.Tests.EditMode
             Assert.That(orderBoard.AdvanceRound(3), Has.Count.EqualTo(1));
             Assert.That(orderBoard.HasFocus("ally-red"), Is.True);
             Assert.That(orderBoard.GetActiveOrders()[0].ExpiresAtRound, Is.EqualTo(5));
-            Assert.That(orderBoard.RemainingOrders(), Is.EqualTo(0));
+            Assert.That(orderBoard.RemainingOrders(), Is.EqualTo(1));
         }
     }
 }
