@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a9914d75dd3a9a44a988949613d2f74e, type: 3}
+  m_Name: C_WardBearer
+  m_EditorClassIdentifier: Tower.Core::Tower.Core.CharacterDef
+  id: C_WardBearer
+  displayName: Ward Bearer
+  maxHp: 44
+  attack: 6
+  defense: 9
+  speed: 7
+  disposition: 1
+  passive: {fileID: 11400000, guid: 7eec96892efd58845a88d12cb0eb2a5c, type: 2}
+  defaultAbilities:
+  - {fileID: 11400000, guid: f9767fdc27731144a930b18d84154aad, type: 2}
+  - {fileID: 11400000, guid: 4d209dc817613cf4a985fd0bbca97ff5, type: 2}
+  isReturner: 0
