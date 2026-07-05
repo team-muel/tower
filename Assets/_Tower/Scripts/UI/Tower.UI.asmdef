@@ -3,7 +3,8 @@
   "rootNamespace": "Tower.UI",
   "references": [
     "Tower.Core",
-    "Tower.Combat"
+    "Tower.Combat",
+    "UnityEngine.UI"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
