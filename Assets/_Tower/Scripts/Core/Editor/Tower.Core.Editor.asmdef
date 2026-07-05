@@ -1,0 +1,18 @@
+{
+  "name": "Tower.Core.Editor",
+  "rootNamespace": "Tower.Core.Editor",
+  "references": [
+    "Tower.Core"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

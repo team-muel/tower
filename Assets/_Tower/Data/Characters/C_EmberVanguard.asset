@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a9914d75dd3a9a44a988949613d2f74e, type: 3}
+  m_Name: C_EmberVanguard
+  m_EditorClassIdentifier: Tower.Core::Tower.Core.CharacterDef
+  id: C_EmberVanguard
+  displayName: Ember Vanguard
+  maxHp: 38
+  attack: 10
+  defense: 6
+  speed: 8
+  disposition: 0
+  passive: {fileID: 11400000, guid: 8b5cc357e6373f74791fd133df6b5a10, type: 2}
+  defaultAbilities:
+  - {fileID: 11400000, guid: eeaad8a656852e9478f93ebb9952066f, type: 2}
+  - {fileID: 11400000, guid: d7175e4007cd3ab40bbf9bd99b695160, type: 2}
+  isReturner: 0
