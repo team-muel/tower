@@ -26,12 +26,16 @@ namespace Tower.Tests.EditMode
             Assert.That(abilities.Count(ability => ability.Tag == AbilityTag.Amplify), Is.EqualTo(2));
             Assert.That(abilities.Count(ability => ability.Tag == AbilityTag.None), Is.EqualTo(2));
 
+            // T18: a few slice abilities carry a 1-2 round cooldown.
+            Assert.That(abilities.Count(ability => ability.CooldownRounds > 0), Is.EqualTo(3));
+
             foreach (var ability in abilities)
             {
                 Assert.That(ability.Id, Is.Not.Empty, ability.name);
                 Assert.That(ability.DisplayName, Is.Not.Empty, ability.name);
                 Assert.That(ability.Range, Is.GreaterThanOrEqualTo(0), ability.name);
                 Assert.That(ability.Cost, Is.GreaterThanOrEqualTo(0), ability.name);
+                Assert.That(ability.CooldownRounds, Is.InRange(0, 2), ability.name);
 
                 if (ability.Tag == AbilityTag.Apply || ability.Tag == AbilityTag.Consume)
                 {

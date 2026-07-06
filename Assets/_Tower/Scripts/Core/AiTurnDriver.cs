@@ -52,7 +52,9 @@ namespace Tower.Core
             }
 
             var unitId = engine.CurrentTurn.UnitId;
-            var plan = scorer.ChooseAction(engine, unitId);
+            // T18: the ability considered is only the engine's pending pick;
+            // movement and targeting still come from the disposition scorer.
+            var plan = scorer.ChoosePendingAction(engine, unitId, engine.PendingAbilityId);
             if (plan.IsFailure)
             {
                 return Result.Failure(plan.Error);

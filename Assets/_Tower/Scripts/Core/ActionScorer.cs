@@ -55,6 +55,19 @@ namespace Tower.Core
 
         public Result<AiPlan> ChooseAction(TurnEngine engine, string unitId)
         {
+            return ChooseAction(engine, unitId, false, null);
+        }
+
+        // T18: same disposition scoring for movement and targeting, but the
+        // only ability candidate is the engine's pending ability for this
+        // unit. A null pending id means the unit may only move or skip.
+        public Result<AiPlan> ChoosePendingAction(TurnEngine engine, string unitId, string pendingAbilityId)
+        {
+            return ChooseAction(engine, unitId, true, pendingAbilityId);
+        }
+
+        private Result<AiPlan> ChooseAction(TurnEngine engine, string unitId, bool restrictToPending, string pendingAbilityId)
+        {
             if (engine == null)
             {
                 return Result<AiPlan>.Failure("Turn engine is required.");
@@ -113,6 +126,17 @@ namespace Tower.Core
                 foreach (var ability in actor.State.Loadout.Abilities)
                 {
                     if (ability == null || ability.Tag == AbilityTag.None)
+                    {
+                        continue;
+                    }
+
+                    // T18: abilities on cooldown are never candidates.
+                    if (actor.State.RemainingCooldown(ability.Id) > 0)
+                    {
+                        continue;
+                    }
+
+                    if (restrictToPending && !StringComparer.Ordinal.Equals(ability.Id, pendingAbilityId))
                     {
                         continue;
                     }

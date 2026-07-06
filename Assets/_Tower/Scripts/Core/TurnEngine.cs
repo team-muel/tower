@@ -13,6 +13,7 @@ namespace Tower.Core
         private readonly IActionPresenter presenter;
         private readonly IAbilityExecutor abilityExecutor;
         private readonly ICombatObserver combatObserver;
+        private readonly int seed;
         private List<string> roundOrder = new List<string>();
         private int activeOrderIndex;
         private bool combatEndObserved;
@@ -21,12 +22,14 @@ namespace Tower.Core
             Dictionary<string, CombatantRef> combatants,
             IActionPresenter presenter,
             IAbilityExecutor abilityExecutor,
-            ICombatObserver combatObserver)
+            ICombatObserver combatObserver,
+            int seed)
         {
             this.combatants = combatants;
             this.presenter = presenter ?? new NullPresenter();
             this.abilityExecutor = abilityExecutor;
             this.combatObserver = combatObserver;
+            this.seed = seed;
             RoundNumber = 1;
             this.combatObserver?.OnCombatStarted(this);
             BeginRound();
@@ -39,11 +42,18 @@ namespace Tower.Core
         public CombatTeam? WinningTeam { get; private set; }
         public IReadOnlyList<string> CurrentRoundOrder => roundOrder.AsReadOnly();
 
+        // T18: the ability pre-selected for the active unit's turn. Picked
+        // seed-deterministically at turn start from the unit's equipped,
+        // off-cooldown tagged abilities; null when every equipped ability is
+        // cooling down (the unit can only move or skip).
+        public string PendingAbilityId { get; private set; }
+
         public static Result<TurnEngine> Create(
             IEnumerable<CombatantRef> combatants,
             IActionPresenter presenter = null,
             IAbilityExecutor abilityExecutor = null,
-            ICombatObserver combatObserver = null)
+            ICombatObserver combatObserver = null,
+            int seed = 0)
         {
             if (combatants == null)
             {
@@ -76,7 +86,7 @@ namespace Tower.Core
                 return Result<TurnEngine>.Failure("Combat requires at least two living teams.");
             }
 
-            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter, abilityExecutor, combatObserver));
+            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter, abilityExecutor, combatObserver, seed));
         }
 
         public CombatantRef GetCombatant(string unitId)
@@ -122,6 +132,61 @@ namespace Tower.Core
             defeatedUnitIds.Add(unitId);
             RemoveDefeatedFromCurrentTurn(unitId);
             UpdateCombatEnd();
+            return Result.Success();
+        }
+
+        // T18: regressor intervention seam (bullet-time direct select). The
+        // pending ability may only be swapped for the active unit, before its
+        // action is spent, to an equipped ability that is off cooldown.
+        public Result SetPendingAbility(string unitId, string abilityId)
+        {
+            if (IsCombatEnded)
+            {
+                return Result.Failure("Combat has ended.");
+            }
+
+            if (CurrentTurn == null)
+            {
+                return Result.Failure("No active turn.");
+            }
+
+            if (string.IsNullOrWhiteSpace(unitId))
+            {
+                return Result.Failure("Unit id is required.");
+            }
+
+            if (!combatants.TryGetValue(unitId, out var combatant))
+            {
+                return Result.Failure("Unknown combatant.");
+            }
+
+            if (!StringComparer.Ordinal.Equals(CurrentTurn.UnitId, unitId))
+            {
+                return Result.Failure("Unit is not the active turn unit.");
+            }
+
+            if (!CurrentTurn.HasAction)
+            {
+                return Result.Failure("Action has already been used this turn.");
+            }
+
+            if (string.IsNullOrWhiteSpace(abilityId))
+            {
+                return Result.Failure("Ability id is required.");
+            }
+
+            var ability = FindEquippedAbility(combatant, abilityId);
+            if (ability == null)
+            {
+                return Result.Failure($"Ability '{abilityId}' is not equipped.");
+            }
+
+            if (combatant.State.RemainingCooldown(abilityId) > 0)
+            {
+                return Result.Failure($"Ability '{abilityId}' is on cooldown.");
+            }
+
+            PendingAbilityId = abilityId;
             return Result.Success();
         }
 
@@ -206,6 +271,15 @@ namespace Tower.Core
                 return Result.Failure("Ability id is required.");
             }
 
+            // T18: an equipped ability that is still cooling down cannot be
+            // used. Abilities outside the loadout stay the executor's problem
+            // (the engine without an executor remains lenient, as before).
+            var ability = FindEquippedAbility(combatants[command.UnitId], command.AbilityId);
+            if (ability != null && combatants[command.UnitId].State.RemainingCooldown(ability.Id) > 0)
+            {
+                return Result.Failure($"Ability '{command.AbilityId}' is on cooldown.");
+            }
+
             if (abilityExecutor != null)
             {
                 // T4 seam: resolve the ability before the action is consumed so
@@ -216,6 +290,9 @@ namespace Tower.Core
                     return execution;
                 }
             }
+
+            // T18: a successful use records the ability's cooldown.
+            RecordCooldown(command.UnitId, ability);
 
             Present(new TurnPresentationEvent(
                 TurnPresentationEventType.Ability,
@@ -235,6 +312,25 @@ namespace Tower.Core
             return Result.Success();
         }
 
+        private void RecordCooldown(string unitId, AbilityDef ability)
+        {
+            if (ability == null || ability.CooldownRounds <= 0)
+            {
+                return;
+            }
+
+            if (!combatants.TryGetValue(unitId, out var combatant))
+            {
+                return;
+            }
+
+            var cooled = combatant.State.WithAbilityCooldown(ability.Id, ability.CooldownRounds);
+            if (cooled.IsSuccess)
+            {
+                combatants[unitId] = combatant.WithState(cooled.Value);
+            }
+        }
+
         private void BeginRound()
         {
             roundOrder = combatants.Values
@@ -248,6 +344,7 @@ namespace Tower.Core
             CurrentTurn = roundOrder.Count > 0
                 ? new TurnState(roundOrder[activeOrderIndex], DefaultMovementPerTurn, true)
                 : null;
+            PendingAbilityId = CurrentTurn != null ? PickPendingAbility(CurrentTurn.UnitId) : null;
             combatObserver?.OnRoundStarted(this, RoundNumber, roundOrder.AsReadOnly());
         }
 
@@ -264,12 +361,100 @@ namespace Tower.Core
                 {
                     activeOrderIndex = index;
                     CurrentTurn = new TurnState(roundOrder[index], DefaultMovementPerTurn, true);
+                    PendingAbilityId = PickPendingAbility(roundOrder[index]);
                     return;
                 }
             }
 
             RoundNumber++;
+            // T18: cooldowns tick down at the round boundary, together with
+            // the initiative recomputation.
+            TickCooldowns();
             BeginRound();
+        }
+
+        private void TickCooldowns()
+        {
+            foreach (var unitId in combatants.Keys.ToList())
+            {
+                var combatant = combatants[unitId];
+                var ticked = combatant.State.WithCooldownsTicked();
+                if (!ReferenceEquals(ticked, combatant.State))
+                {
+                    combatants[unitId] = combatant.WithState(ticked);
+                }
+            }
+        }
+
+        // T18: seed-deterministic pending pick. Pool: equipped tagged
+        // abilities off cooldown. Fallback: the first untagged
+        // (AbilityTag.None) equipped ability off cooldown, i.e. the "basic
+        // action". If everything is cooling down there is no pending ability.
+        private string PickPendingAbility(string unitId)
+        {
+            if (!combatants.TryGetValue(unitId, out var combatant))
+            {
+                return null;
+            }
+
+            var state = combatant.State;
+            List<AbilityDef> tagged = null;
+            AbilityDef untaggedFallback = null;
+            foreach (var ability in state.Loadout.Abilities)
+            {
+                if (ability == null || state.RemainingCooldown(ability.Id) > 0)
+                {
+                    continue;
+                }
+
+                if (ability.Tag == AbilityTag.None)
+                {
+                    untaggedFallback = untaggedFallback ?? ability;
+                    continue;
+                }
+
+                (tagged ?? (tagged = new List<AbilityDef>())).Add(ability);
+            }
+
+            if (tagged == null)
+            {
+                return untaggedFallback != null ? untaggedFallback.Id : null;
+            }
+
+            var roll = ComputeDeterministicRoll(seed, RoundNumber, unitId);
+            return tagged[roll % tagged.Count].Id;
+        }
+
+        // FNV-1a over (seed, round, unit id). Pure C# and stable across
+        // processes, unlike string.GetHashCode, so the same seed always
+        // produces the same pending pick.
+        private static int ComputeDeterministicRoll(int seed, int roundNumber, string unitId)
+        {
+            unchecked
+            {
+                var hash = 2166136261u;
+                hash = (hash ^ (uint)seed) * 16777619u;
+                hash = (hash ^ (uint)roundNumber) * 16777619u;
+                foreach (var character in unitId)
+                {
+                    hash = (hash ^ character) * 16777619u;
+                }
+
+                return (int)(hash & 0x7FFFFFFF);
+            }
+        }
+
+        private static AbilityDef FindEquippedAbility(CombatantRef combatant, string abilityId)
+        {
+            foreach (var ability in combatant.State.Loadout.Abilities)
+            {
+                if (ability != null && StringComparer.Ordinal.Equals(ability.Id, abilityId))
+                {
+                    return ability;
+                }
+            }
+
+            return null;
         }
 
         private void RemoveDefeatedFromCurrentTurn(string unitId)
@@ -318,6 +503,7 @@ namespace Tower.Core
             IsCombatEnded = true;
             WinningTeam = livingTeams.Length == 1 ? livingTeams[0] : (CombatTeam?)null;
             CurrentTurn = null;
+            PendingAbilityId = null;
             if (!combatEndObserved)
             {
                 combatEndObserved = true;

@@ -188,7 +188,8 @@ namespace Tower.Core
                 state.DeathCount,
                 state.SpeedModifier,
                 state.Loadout.SlotCount,
-                state.Loadout.Abilities.ToArray());
+                state.Loadout.Abilities.ToArray(),
+                state.AbilityCooldowns);
             if (updated.IsFailure)
             {
                 return Result.Failure(updated.Error);
