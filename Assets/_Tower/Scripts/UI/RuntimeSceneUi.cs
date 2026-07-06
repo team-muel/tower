@@ -14,7 +14,9 @@ namespace Tower.UI
             var canvasObject = new GameObject(name);
             var canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            var scaler = canvasObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvasObject.AddComponent<CanvasResolutionScaler>();
             canvasObject.AddComponent<GraphicRaycaster>();
             return canvas;
         }

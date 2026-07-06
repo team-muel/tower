@@ -333,7 +333,7 @@ namespace Tower.UI
             yield return null;
             // T15: Boot decides new-vs-continue; keep the pref it set so the
             // Continue path survives Camp -> Loadout -> Expedition.
-            SceneManager.LoadScene(TowerSceneNames.Expedition);
+            SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Expedition);
         }
 
         private void GoBack()
@@ -343,7 +343,7 @@ namespace Tower.UI
                 return;
             }
 
-            SceneManager.LoadScene(TowerSceneNames.Camp);
+            SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Camp);
         }
 
         private static void SetButtonLabel(Button button, string label)

@@ -84,7 +84,7 @@ namespace Tower.UI
             repository?.Delete();
             PlayerPrefs.SetInt(TowerSceneNames.NewExpeditionPref, 1);
             PlayerPrefs.Save();
-            SceneManager.LoadScene(TowerSceneNames.Camp);
+            SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Camp);
         }
 
         private void ContinueExpedition()
@@ -93,7 +93,7 @@ namespace Tower.UI
             // save is picked up when the expedition scene finally loads.
             PlayerPrefs.SetInt(TowerSceneNames.NewExpeditionPref, 0);
             PlayerPrefs.Save();
-            SceneManager.LoadScene(TowerSceneNames.Camp);
+            SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Camp);
         }
 
         private static SaveRepository CreateRepository()

@@ -336,7 +336,7 @@ namespace Tower.UI
             }
 
             departing = true;
-            SceneManager.LoadScene(TowerSceneNames.Loadout);
+            SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Loadout);
         }
 
         private void ActivateCampfire()

@@ -268,7 +268,7 @@ namespace Tower.UI
             AddDoorButton(sidePanel, "West Door");
             proceedButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Next Floor", BeginNextFloor));
             proceedButton.gameObject.SetActive(false);
-            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Main Menu", () => SceneManager.LoadScene(TowerSceneNames.Boot)));
+            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Main Menu", () => SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Boot)));
             resultText = RuntimeSceneUi.AddText(sidePanel, "Result", "", 15, TextAnchor.UpperLeft);
             logText = RuntimeSceneUi.AddText(sidePanel, "Log", "", 14, TextAnchor.UpperLeft);
             HideDoorButtons();
@@ -763,7 +763,7 @@ namespace Tower.UI
                 ? "Great regression: back to floor 1."
                 : "Retreated to the last checkpoint.");
             ShowResult(progress.Value);
-            ShowProceedButton("Return to Menu", () => SceneManager.LoadScene(TowerSceneNames.Boot));
+            ShowProceedButton("Return to Menu", () => SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Boot));
             RefreshStatus();
         }
 
@@ -1052,7 +1052,7 @@ namespace Tower.UI
                 resultText.text = "전진 결과\n층계 정복. 숏컷이 저장됐다.\n사망 상태 동료는 전진 기록에 확정된다.";
             }
 
-            ShowProceedButton("Return to Menu", () => SceneManager.LoadScene(TowerSceneNames.Boot));
+            ShowProceedButton("Return to Menu", () => SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Boot));
         }
 
         private void AddDoorButton(Transform parent, string label)
