@@ -14,6 +14,14 @@ namespace Tower.Core
     // - Third retreat: great regression — stairway 1 floor 1, roster reset
     //   from the initial template (missing stay excluded), retreat count
     //   reset. Shortcuts are kept (v0 decision).
+    //
+    // T12 hidden-missing rule (never surface the difference in UI):
+    // - Preset companions only *pretend* to obey the three-death rule. At
+    //   three deaths they enter MissingIds like everyone else (externally
+    //   identical), but are also tracked in HiddenMissingIds.
+    // - The great regression returns hidden-missing presets to the roster
+    //   (death count reset to zero — v0 decision). Generated companions stay
+    //   permanently missing, as before.
     public static class ExpeditionRules
     {
         public const int MissingDeathThreshold = 3;
@@ -57,6 +65,7 @@ namespace Tower.Core
                 roster,
                 new List<ExpeditionMember>(state.InitialRoster),
                 new List<string>(state.MissingIds),
+                new List<string>(state.HiddenMissingIds),
                 new List<string>(state.FallenIds),
                 new HashSet<int>(state.ShortcutStairways));
         }
@@ -92,6 +101,7 @@ namespace Tower.Core
                     new List<ExpeditionMember>(state.Roster),
                     new List<ExpeditionMember>(state.InitialRoster),
                     new List<string>(state.MissingIds),
+                    new List<string>(state.HiddenMissingIds),
                     new List<string>(state.FallenIds),
                     new HashSet<int>(state.ShortcutStairways));
                 return moved.IsSuccess
@@ -129,6 +139,7 @@ namespace Tower.Core
                 survivors,
                 new List<ExpeditionMember>(state.InitialRoster),
                 new List<string>(state.MissingIds),
+                new List<string>(state.HiddenMissingIds),
                 fallen,
                 shortcuts);
             return advanced.IsSuccess
@@ -165,6 +176,7 @@ namespace Tower.Core
 
             // Death counts are the regressor's memory: they survive rollback.
             var newlyMissing = new List<string>();
+            var newlyHidden = new List<string>();
             var deathCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var member in current.Roster)
             {
@@ -173,15 +185,25 @@ namespace Tower.Core
                 if (member.IsDead && deathCount >= MissingDeathThreshold)
                 {
                     newlyMissing.Add(member.UnitId);
+
+                    // T12: presets go missing in appearance only. Track them
+                    // internally so the great regression can bring them back.
+                    if (member.State.Definition.IsPreset)
+                    {
+                        newlyHidden.Add(member.UnitId);
+                    }
                 }
             }
 
             var missing = new List<string>(current.MissingIds);
             missing.AddRange(newlyMissing.Where(id => !missing.Contains(id, StringComparer.Ordinal)));
 
+            var hiddenMissing = new List<string>(current.HiddenMissingIds);
+            hiddenMissing.AddRange(newlyHidden.Where(id => !hiddenMissing.Contains(id, StringComparer.Ordinal)));
+
             if (newRetreatCount >= GreatRegressionRetreatThreshold)
             {
-                return GreatRegression(current, missing, newlyMissing);
+                return GreatRegression(current, missing, hiddenMissing, newlyMissing);
             }
 
             var revived = new List<string>();
@@ -225,6 +247,7 @@ namespace Tower.Core
                 roster,
                 new List<ExpeditionMember>(current.InitialRoster),
                 missing,
+                hiddenMissing,
                 new List<string>(current.FallenIds),
                 new HashSet<int>(current.ShortcutStairways));
             return retreated.IsSuccess
@@ -240,14 +263,51 @@ namespace Tower.Core
         // from the initial template. Missing members stay excluded (their
         // record is permanent); fallen members return fresh — time rolls back
         // past their deaths (v0 decision). Shortcuts are kept.
+        //
+        // T12: hidden-missing presets return to the roster here — the
+        // regression rolls back past their disappearance too. Their death
+        // count resets to zero (v0 decision). Only presets present in the
+        // initial template can return (presets recruited mid-run are out of
+        // scope for v0 and would stay missing).
         private static Result<ExpeditionProgress> GreatRegression(
             ExpeditionState current,
             List<string> missing,
+            List<string> hiddenMissing,
             List<string> newlyMissing)
         {
-            var roster = current.InitialRoster
-                .Where(member => !missing.Contains(member.UnitId, StringComparer.Ordinal))
+            var returning = hiddenMissing
+                .Where(id => current.InitialRoster.Any(member => StringComparer.Ordinal.Equals(member.UnitId, id)))
                 .ToList();
+
+            var remainingMissing = missing
+                .Where(id => !returning.Contains(id, StringComparer.Ordinal))
+                .ToList();
+            var remainingHidden = hiddenMissing
+                .Where(id => !returning.Contains(id, StringComparer.Ordinal))
+                .ToList();
+
+            var roster = new List<ExpeditionMember>();
+            foreach (var member in current.InitialRoster)
+            {
+                if (remainingMissing.Contains(member.UnitId, StringComparer.Ordinal))
+                {
+                    continue;
+                }
+
+                if (returning.Contains(member.UnitId, StringComparer.Ordinal))
+                {
+                    var restored = RebuildState(member.State, Math.Max(1, member.State.CurrentHp), 0);
+                    if (restored.IsFailure)
+                    {
+                        return Result<ExpeditionProgress>.Failure(restored.Error);
+                    }
+
+                    roster.Add(member.WithState(restored.Value));
+                    continue;
+                }
+
+                roster.Add(member);
+            }
 
             var regressed = ExpeditionState.Restore(
                 current.StairwayCount,
@@ -258,7 +318,8 @@ namespace Tower.Core
                 false,
                 roster,
                 new List<ExpeditionMember>(current.InitialRoster),
-                missing,
+                remainingMissing,
+                remainingHidden,
                 new List<string>(),
                 new HashSet<int>(current.ShortcutStairways));
             return regressed.IsSuccess
@@ -294,6 +355,7 @@ namespace Tower.Core
                 new List<ExpeditionMember>(state.Roster),
                 new List<ExpeditionMember>(state.InitialRoster),
                 new List<string>(state.MissingIds),
+                new List<string>(state.HiddenMissingIds),
                 new List<string>(state.FallenIds),
                 new HashSet<int>(state.ShortcutStairways));
         }
