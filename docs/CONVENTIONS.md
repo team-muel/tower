@@ -35,3 +35,11 @@ Characters, passives, abilities, marks, and tags should be extended by adding da
 ## Combat Simulation
 
 Run the AI-vs-AI balance smoke in Unity batchmode with the same environment required for tests: set `ALLUSERSPROFILE=C:\ProgramData`, `ProgramData=C:\ProgramData`, and `TMP=%TEMP%`, then call `Unity.exe -quit -batchmode -projectPath C:\Users\fancy\Tower -executeMethod Tower.EditorTools.SimRunner.RunDefault -logFile -`. The runner writes JSON to `C:\dev\_setup\sim-result.json` by default; override with `-simOutput <path>` and tune the sample with `-simSeed <int>`, `-simBattles <int>`, or `-simMaxRounds <int>`.
+
+## QA Harness & Camera Tuning (dev only)
+
+Both features are inert unless their command line argument is present; without the argument the code paths never activate.
+
+- **QA TCP harness**: launch the player with `-qaPort <n>` (e.g. `Tower.exe -qaPort 7777`). A localhost-only, line-oriented TCP endpoint accepts `press <buttonGameObjectName>`, `state` (one-line JSON snapshot: scene, combat round/initiative/unit HP-position-marks, expedition floor/room/retreat), `scene <name>`, and `quit`. Responses are `OK`, `ERR <reason>`, or the JSON line. Only explicitly registered buttons and state contributors are exposed (`Tower.Core.QaRegistry` via `QaRuntime`) — scene controllers register their own uGUI buttons by GameObject name; reflection-based scene scans are forbidden. Quick check from PowerShell:
+  `$c = New-Object Net.Sockets.TcpClient('127.0.0.1', 7777); $w = New-Object IO.StreamWriter($c.GetStream()); $w.AutoFlush = $true; $r = New-Object IO.StreamReader($c.GetStream()); $w.WriteLine('state'); $r.ReadLine()`
+- **Camera tuning mode**: launch with `-devcam`. Keys: `I`/`K` pitch, `+`/`-` distance, `[`/`]` FOV; current values are drawn top-left; `P` dumps them to `%TEMP%\tower-cam.json` so a tuned setup can be promoted into `Tower.Core.CameraTuning`. v0 defaults live in `CameraTuning` (pitch 52, zoom range 8-20 m default 14, FOV 38, follow damping 0.12 s). Mouse scroll zoom is always active, in dev and non-dev builds alike.

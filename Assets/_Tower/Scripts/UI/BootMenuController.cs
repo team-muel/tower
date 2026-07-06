@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using Tower.Core;
 using UnityEngine;
@@ -8,6 +9,7 @@ namespace Tower.UI
 {
     public sealed class BootMenuController : MonoBehaviour
     {
+        private readonly List<string> qaButtonNames = new List<string>();
         private Button continueButton;
         private Text saveStatus;
 
@@ -15,6 +17,16 @@ namespace Tower.UI
         {
             BuildMenu();
             Refresh();
+        }
+
+        private void OnDestroy()
+        {
+            foreach (var name in qaButtonNames)
+            {
+                QaRuntime.UnregisterButton(name);
+            }
+
+            qaButtonNames.Clear();
         }
 
         private void BuildMenu()
@@ -32,9 +44,22 @@ namespace Tower.UI
             RuntimeSceneUi.AddText(panel, "Subtitle", "Grid tactics vertical slice", 18, TextAnchor.MiddleCenter);
             saveStatus = RuntimeSceneUi.AddText(panel, "Save Status", string.Empty, 15, TextAnchor.MiddleCenter);
 
-            RuntimeSceneUi.AddButton(panel, "New Expedition", StartNewExpedition);
-            continueButton = RuntimeSceneUi.AddButton(panel, "Continue", ContinueExpedition);
-            RuntimeSceneUi.AddButton(panel, "Quit", Quit);
+            RegisterQaButton(RuntimeSceneUi.AddButton(panel, "New Expedition", StartNewExpedition));
+            continueButton = RegisterQaButton(RuntimeSceneUi.AddButton(panel, "Continue", ContinueExpedition));
+            RegisterQaButton(RuntimeSceneUi.AddButton(panel, "Quit", Quit));
+        }
+
+        private Button RegisterQaButton(Button button)
+        {
+            if (button == null)
+            {
+                return null;
+            }
+
+            var name = button.gameObject.name;
+            qaButtonNames.Add(name);
+            QaRuntime.RegisterButton(name, () => button.onClick.Invoke());
+            return button;
         }
 
         private void Refresh()

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Tower.Core;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -9,12 +10,23 @@ namespace Tower.UI
     public sealed class LoadoutMenuController : MonoBehaviour
     {
         private readonly Dictionary<string, Text> speedLines = new Dictionary<string, Text>();
+        private readonly List<string> qaButtonNames = new List<string>();
         private TowerSliceContent content;
 
         private void Start()
         {
             content = TowerSliceContent.Create();
             BuildLoadout();
+        }
+
+        private void OnDestroy()
+        {
+            foreach (var name in qaButtonNames)
+            {
+                QaRuntime.UnregisterButton(name);
+            }
+
+            qaButtonNames.Clear();
         }
 
         private void BuildLoadout()
@@ -36,8 +48,8 @@ namespace Tower.UI
                 AddMemberRow(panel, id);
             }
 
-            RuntimeSceneUi.AddButton(panel, "Start Expedition", StartExpedition);
-            RuntimeSceneUi.AddButton(panel, "Back", () => SceneManager.LoadScene(TowerSceneNames.Boot));
+            RegisterQaButton(RuntimeSceneUi.AddButton(panel, "Start Expedition", StartExpedition));
+            RegisterQaButton(RuntimeSceneUi.AddButton(panel, "Back", () => SceneManager.LoadScene(TowerSceneNames.Boot)));
             Refresh();
         }
 
@@ -68,8 +80,27 @@ namespace Tower.UI
             layout.childControlWidth = true;
             layout.childForceExpandWidth = false;
 
-            RuntimeSceneUi.AddButton(controls.transform, "- Speed", () => AdjustSpeed(characterId, -1));
-            RuntimeSceneUi.AddButton(controls.transform, "+ Speed", () => AdjustSpeed(characterId, 1));
+            // Speed rows repeat per character; give the buttons unique GameObject
+            // names so the QA registry (keyed by GameObject name) stays unambiguous.
+            var minus = RuntimeSceneUi.AddButton(controls.transform, "- Speed", () => AdjustSpeed(characterId, -1));
+            minus.gameObject.name = characterId + " - Speed Button";
+            RegisterQaButton(minus);
+            var plus = RuntimeSceneUi.AddButton(controls.transform, "+ Speed", () => AdjustSpeed(characterId, 1));
+            plus.gameObject.name = characterId + " + Speed Button";
+            RegisterQaButton(plus);
+        }
+
+        private Button RegisterQaButton(Button button)
+        {
+            if (button == null)
+            {
+                return null;
+            }
+
+            var name = button.gameObject.name;
+            qaButtonNames.Add(name);
+            QaRuntime.RegisterButton(name, () => button.onClick.Invoke());
+            return button;
         }
 
         private void AdjustSpeed(string characterId, int delta)
