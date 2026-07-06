@@ -32,6 +32,12 @@ namespace Tower.UI
         private ExpeditionState checkpoint;
         private GridView gridView;
         private TileHighlighter highlighter;
+        // T20: analog battlefield path (default). The grid path above remains
+        // as the CombatSpaceMode.Grid rollback.
+        private AnalogBattlefield analogBattlefield;
+        private AnalogBattlefieldView analogView;
+        private AnalogPlayerTurnController analogController;
+        private CombatSpaceMode spaceMode = CombatSpaceSettings.DefaultMode;
         private TurnEngine engine;
         private CoreAiTurnDriver aiDriver;
         private PlayerTurnController playerController;
@@ -178,7 +184,10 @@ namespace Tower.UI
                 round = engine.RoundNumber,
                 activeUnitId = engine.CurrentTurn == null ? string.Empty : engine.CurrentTurn.UnitId,
                 remainingOrders = orderBoard == null ? 0 : orderBoard.RemainingOrders(),
-                commandMode = commandMode.IsActive
+                commandMode = commandMode.IsActive,
+                spaceMode = analogBattlefield != null
+                    ? CombatSpaceMode.Analog.ToString()
+                    : CombatSpaceMode.Grid.ToString()
             };
             combat.initiativeOrder.AddRange(engine.CurrentRoundOrder);
             foreach (var unitId in tokens.Keys.OrderBy(id => id, StringComparer.Ordinal))
@@ -201,9 +210,20 @@ namespace Tower.UI
                         : string.Empty
                 };
 
-                var position = gridView != null && gridView.Map != null ? gridView.Map.FindOccupant(unitId) : null;
-                unit.x = position.HasValue ? position.Value.X : -1;
-                unit.y = position.HasValue ? position.Value.Y : -1;
+                if (analogBattlefield != null)
+                {
+                    // T20: continuous float coordinates in analog mode.
+                    var position = analogBattlefield.FindOccupant(unitId);
+                    unit.x = position.HasValue ? position.Value.X : -1f;
+                    unit.y = position.HasValue ? position.Value.Y : -1f;
+                }
+                else
+                {
+                    var position = gridView != null && gridView.Map != null ? gridView.Map.FindOccupant(unitId) : null;
+                    unit.x = position.HasValue ? position.Value.X : -1f;
+                    unit.y = position.HasValue ? position.Value.Y : -1f;
+                }
+
                 if (statusBoard != null)
                 {
                     unit.marks.AddRange(statusBoard.GetActiveMarkIds(unitId, engine.RoundNumber));
@@ -232,16 +252,16 @@ namespace Tower.UI
             turnText = RuntimeSceneUi.AddText(sidePanel, "Turn", "", 16, TextAnchor.UpperLeft);
             initiativeText = RuntimeSceneUi.AddText(sidePanel, "Initiative", "", 14, TextAnchor.UpperLeft);
             unitText = RuntimeSceneUi.AddText(sidePanel, "Units", "", 14, TextAnchor.UpperLeft);
-            moveButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Move", () => playerController?.EnterMoveMode()));
+            moveButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Move", EnterMoveMode));
 
             for (var index = 0; index < 2; index++)
             {
                 var slot = index;
-                abilityButtons.Add(RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Ability " + (index + 1), () => playerController?.EnterAbilityMode(slot))));
+                abilityButtons.Add(RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Ability " + (index + 1), () => EnterAbilityMode(slot))));
             }
 
             RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Order: Focus Nearest", IssueFocusOrder));
-            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Skip Turn", () => playerController?.Skip()));
+            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Skip Turn", SkipTurn));
             RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Retreat", Retreat));
             AddDoorButton(sidePanel, "North Door");
             AddDoorButton(sidePanel, "East Door");
@@ -378,6 +398,10 @@ namespace Tower.UI
             }
 
             ClearBattleObjects();
+            // T20: the space mode is latched per encounter so a mid-combat
+            // flag change cannot desync the battlefield and the view.
+            spaceMode = CombatSpaceSettings.Mode;
+            var analog = spaceMode == CombatSpaceMode.Analog;
             var map = room.Map;
             var party = state.Roster.Where(member => !member.IsDead).ToList();
             var spawnCells = map.Positions.Where(position => map.CanEnter(position)).ToList();
@@ -387,18 +411,34 @@ namespace Tower.UI
                 return;
             }
 
-            var gridObject = new GameObject("Runtime Grid");
-            gridView = gridObject.AddComponent<GridView>();
-            gridView.Build(map);
-            highlighter = gridObject.AddComponent<TileHighlighter>();
-            highlighter.Initialize(gridView);
+            if (analog)
+            {
+                analogBattlefield = AnalogBattlefield.FromRoom(map.Width, map.Height);
+                var viewObject = new GameObject("Analog Battlefield");
+                analogView = viewObject.AddComponent<AnalogBattlefieldView>();
+                analogView.Build(analogBattlefield);
+            }
+            else
+            {
+                var gridObject = new GameObject("Runtime Grid");
+                gridView = gridObject.AddComponent<GridView>();
+                gridView.Build(map);
+                highlighter = gridObject.AddComponent<TileHighlighter>();
+                highlighter.Initialize(gridView);
+            }
 
             var combatants = new List<CombatantRef>();
             for (var index = 0; index < party.Count; index++)
             {
                 var member = party[index];
                 var cell = spawnCells[index];
-                var token = UnitToken.Spawn(gridView, cell, member.UnitId, UnitColor(member.UnitId, CombatTeam.Player));
+                var token = SpawnToken(analog, cell, member.UnitId, UnitColor(member.UnitId, CombatTeam.Player));
+                if (token == null)
+                {
+                    AddLog($"Could not place unit '{member.UnitId}'.");
+                    return;
+                }
+
                 tokens[member.UnitId] = token;
 
                 var combatant = CombatantRef.Create(member.UnitId, CombatTeam.Player, member.State);
@@ -424,7 +464,13 @@ namespace Tower.UI
 
                 var unitId = $"enemy-{room.Id}-{slot.Index}";
                 var cell = spawnCells[spawnCells.Count - 1 - index];
-                var token = UnitToken.Spawn(gridView, cell, unitId, UnitColor(unitId, CombatTeam.Enemy));
+                var token = SpawnToken(analog, cell, unitId, UnitColor(unitId, CombatTeam.Enemy));
+                if (token == null)
+                {
+                    AddLog($"Could not place unit '{unitId}'.");
+                    return;
+                }
+
                 tokens[unitId] = token;
 
                 var combatant = CombatantRef.Create(unitId, CombatTeam.Enemy, enemyState.Value);
@@ -438,7 +484,9 @@ namespace Tower.UI
             }
 
             statusBoard = new StatusBoard();
-            var resolver = AbilityResolver.Create(map, statusBoard);
+            var resolver = analog
+                ? AbilityResolver.Create(analogBattlefield, statusBoard)
+                : AbilityResolver.Create(map, statusBoard);
             if (resolver.IsFailure)
             {
                 AddLog(resolver.Error);
@@ -456,14 +504,18 @@ namespace Tower.UI
 
             engine = engineResult.Value;
 
-            var scorer = ActionScorer.Create(map, statusBoard);
+            var scorer = analog
+                ? ActionScorer.Create(analogBattlefield, statusBoard)
+                : ActionScorer.Create(map, statusBoard);
             if (scorer.IsFailure)
             {
                 AddLog(scorer.Error);
                 return;
             }
 
-            var driver = CoreAiTurnDriver.Create(engine, map, scorer.Value);
+            var driver = analog
+                ? CoreAiTurnDriver.Create(engine, analogBattlefield, scorer.Value)
+                : CoreAiTurnDriver.Create(engine, map, scorer.Value);
             if (driver.IsFailure)
             {
                 AddLog(driver.Error);
@@ -473,17 +525,44 @@ namespace Tower.UI
             aiDriver = driver.Value;
             orderBoard = OrderBoard.CreateDefault();
 
-            var playerToken = tokens.TryGetValue(ReturnerId, out var tokenResult) ? tokenResult : null;
-            var enemyTokens = tokens.Values.Where(token => token.OccupantId.StartsWith("enemy-", StringComparison.Ordinal)).ToArray();
             var abilities = engine.GetCombatant(ReturnerId)?.State.Loadout.Abilities ?? Array.Empty<AbilityDef>();
-            playerController = new PlayerTurnController(engine, gridView, highlighter, playerToken, enemyTokens, orderBoard, ReturnerId, abilities, presenter);
+            if (analog)
+            {
+                analogController = new AnalogPlayerTurnController(
+                    engine, analogBattlefield, analogView, orderBoard, ReturnerId, abilities, presenter);
+            }
+            else
+            {
+                var playerToken = tokens.TryGetValue(ReturnerId, out var tokenResult) ? tokenResult : null;
+                var enemyTokens = tokens.Values.Where(token => token.OccupantId.StartsWith("enemy-", StringComparison.Ordinal)).ToArray();
+                playerController = new PlayerTurnController(engine, gridView, highlighter, playerToken, enemyTokens, orderBoard, ReturnerId, abilities, presenter);
+            }
 
-            CreateCamera(room.Map.Width, room.Map.Height);
+            var focusWorld = analog
+                ? analogView.ToWorld(new BattlePos(analogBattlefield.Width * 0.5f, analogBattlefield.Height * 0.5f))
+                : gridView.CellToWorld(new GridPos(map.Width / 2, map.Height / 2));
+            CreateCamera(focusWorld);
             CreateCommandOverlay(party);
             RefreshAbilityButtons(abilities);
             RefreshStatus();
             RefreshCombatHud();
-            AddLog($"Encounter {room.Id} started. Keys: M, 1, 2 · Space 지휘 모드.");
+            AddLog($"Encounter {room.Id} started ({spaceMode}). Keys: M, 1, 2 · Space 지휘 모드.");
+        }
+
+        private UnitToken SpawnToken(bool analog, GridPos cell, string unitId, Color color)
+        {
+            if (!analog)
+            {
+                return UnitToken.Spawn(gridView, cell, unitId, color);
+            }
+
+            var position = BattleScale.ToBattlePos(cell);
+            if (!analogBattlefield.TryPlaceOccupant(unitId, position))
+            {
+                return null;
+            }
+
+            return UnitToken.SpawnAnalog(analogView, position, unitId, color);
         }
 
         private void RunAiTurn()
@@ -504,14 +583,14 @@ namespace Tower.UI
                 }
             }
 
-            SyncTokensToMap();
+            SyncTokens();
             RefreshStatus();
             RefreshCombatHud();
         }
 
         private void HandlePlayerInput()
         {
-            if (gridView == null || sceneCamera == null || playerController == null)
+            if (sceneCamera == null)
             {
                 return;
             }
@@ -519,6 +598,17 @@ namespace Tower.UI
             if (commandMode.IsActive)
             {
                 // 지휘 모드: 셀 클릭/모드 키 대신 오버레이 버튼이 입력을 받는다.
+                return;
+            }
+
+            if (analogController != null)
+            {
+                HandleAnalogPlayerInput();
+                return;
+            }
+
+            if (gridView == null || playerController == null)
+            {
                 return;
             }
 
@@ -543,7 +633,7 @@ namespace Tower.UI
                 if (Input.GetMouseButtonDown(0))
                 {
                     playerController.OnCellClicked(hover);
-                    SyncTokensToMap();
+                    SyncTokens();
                     RefreshStatus();
                     RefreshCombatHud();
                 }
@@ -554,6 +644,56 @@ namespace Tower.UI
             }
         }
 
+        // T20: analog manual input — M/1/2 mode keys, then a click either on a
+        // unit token (targeting) or on the floor (move inside the ring).
+        private void HandleAnalogPlayerInput()
+        {
+            if (analogView == null || analogController == null)
+            {
+                return;
+            }
+
+            if (Input.GetKeyDown(KeyCode.M))
+            {
+                analogController.EnterMoveMode();
+            }
+
+            if (Input.GetKeyDown(KeyCode.Alpha1))
+            {
+                analogController.EnterAbilityMode(0);
+            }
+
+            if (Input.GetKeyDown(KeyCode.Alpha2))
+            {
+                analogController.EnterAbilityMode(1);
+            }
+
+            if (!Input.GetMouseButtonDown(0))
+            {
+                return;
+            }
+
+            var ray = sceneCamera.ScreenPointToRay(Input.mousePosition);
+            if (!Physics.Raycast(ray, out var hit))
+            {
+                return;
+            }
+
+            var token = hit.collider != null ? hit.collider.GetComponentInParent<UnitToken>() : null;
+            if (token != null)
+            {
+                analogController.OnUnitClicked(token.OccupantId);
+            }
+            else if (analogView.TryGetBattlePos(hit.point, out var point))
+            {
+                analogController.OnPointClicked(point);
+            }
+
+            SyncTokens();
+            RefreshStatus();
+            RefreshCombatHud();
+        }
+
         private void ResolveEncounter()
         {
             TearDownCommandMode();
@@ -562,6 +702,7 @@ namespace Tower.UI
             AddLog(winner == CombatTeam.Player ? "Encounter cleared." : "Party wiped.");
             engine = null;
             playerController = null;
+            analogController = null;
             aiDriver = null;
 
             if (winner == CombatTeam.Player)
@@ -691,9 +832,57 @@ namespace Tower.UI
             checkpoint = state;
         }
 
+        // T20: the manual controllers (grid/analog) share these seams so the
+        // UI buttons and QA harness drive whichever mode is active.
+        private bool IsManualTurn()
+        {
+            if (analogController != null)
+            {
+                return analogController.IsPlayerTurn();
+            }
+
+            return playerController != null && playerController.IsPlayerTurn();
+        }
+
+        private void EnterMoveMode()
+        {
+            if (analogController != null)
+            {
+                analogController.EnterMoveMode();
+            }
+            else
+            {
+                playerController?.EnterMoveMode();
+            }
+        }
+
+        private void EnterAbilityMode(int slot)
+        {
+            if (analogController != null)
+            {
+                analogController.EnterAbilityMode(slot);
+            }
+            else
+            {
+                playerController?.EnterAbilityMode(slot);
+            }
+        }
+
+        private void SkipTurn()
+        {
+            if (analogController != null)
+            {
+                analogController.Skip();
+            }
+            else
+            {
+                playerController?.Skip();
+            }
+        }
+
         private void IssueFocusOrder()
         {
-            if (engine == null || playerController == null || !playerController.IsPlayerTurn())
+            if (engine == null || !IsManualTurn())
             {
                 return;
             }
@@ -706,7 +895,15 @@ namespace Tower.UI
                 return;
             }
 
-            playerController.EnterOrderMode(target.UnitId);
+            if (analogController != null)
+            {
+                analogController.EnterOrderMode(target.UnitId);
+            }
+            else
+            {
+                playerController.EnterOrderMode(target.UnitId);
+            }
+
             AddLog("Order issued: focus " + target.UnitId);
         }
 
@@ -738,7 +935,7 @@ namespace Tower.UI
 
             var active = engine.CurrentTurn?.UnitId ?? "none";
             turnText.text = $"Round {engine.RoundNumber} | Active: {active}";
-            var isPlayerTurn = playerController != null && playerController.IsPlayerTurn();
+            var isPlayerTurn = IsManualTurn();
             if (moveButton != null)
             {
                 moveButton.interactable = isPlayerTurn;
@@ -997,8 +1194,16 @@ namespace Tower.UI
                 Destroy(gridView.gameObject);
             }
 
+            if (analogView != null)
+            {
+                Destroy(analogView.gameObject);
+            }
+
             gridView = null;
             highlighter = null;
+            analogView = null;
+            analogBattlefield = null;
+            analogController = null;
             statusBoard = null;
             engine = null;
             aiDriver = null;
@@ -1008,7 +1213,7 @@ namespace Tower.UI
 
         // T19: combat runs on the orbit rig; camp/exploration scenes keep the
         // iso follow rig (the rigs coexist, one per scene mode).
-        private void CreateCamera(int width, int height)
+        private void CreateCamera(Vector3 focusWorld)
         {
             var existingIso = FindFirstObjectByType<IsoCameraRig>();
             if (existingIso != null)
@@ -1024,7 +1229,7 @@ namespace Tower.UI
 
             var cameraRigObject = new GameObject("Orbit Camera Rig");
             orbitRig = cameraRigObject.AddComponent<OrbitCameraRig>();
-            orbitRig.FocusWorld(gridView.CellToWorld(new GridPos(width / 2, height / 2)));
+            orbitRig.FocusWorld(focusWorld);
             sceneCamera = orbitRig.Camera;
             focusedUnitId = null;
         }
@@ -1127,6 +1332,41 @@ namespace Tower.UI
             light.type = LightType.Directional;
             light.intensity = 1.2f;
             lightObject.transform.rotation = Quaternion.Euler(50f, -35f, 0f);
+        }
+
+        private void SyncTokens()
+        {
+            if (analogBattlefield != null)
+            {
+                SyncTokensToBattlefield();
+                return;
+            }
+
+            SyncTokensToMap();
+        }
+
+        // T20: tokens mirror the analog battlefield's continuous positions.
+        private void SyncTokensToBattlefield()
+        {
+            foreach (var pair in tokens)
+            {
+                if (engine != null && !engine.IsAlive(pair.Key))
+                {
+                    pair.Value.gameObject.SetActive(false);
+                    continue;
+                }
+
+                var position = analogBattlefield.FindOccupant(pair.Key);
+                if (position.HasValue)
+                {
+                    pair.Value.PlaceAt(position.Value);
+                    pair.Value.gameObject.SetActive(true);
+                }
+                else
+                {
+                    pair.Value.gameObject.SetActive(false);
+                }
+            }
         }
 
         private void SyncTokensToMap()

@@ -2,7 +2,9 @@ namespace Tower.Core
 {
     public sealed class TurnState
     {
-        public TurnState(string unitId, int remainingMovement, bool hasAction)
+        // T20: movement is tracked as a float budget so analog moves can
+        // consume fractional distances; grid moves keep spending integers.
+        public TurnState(string unitId, float remainingMovement, bool hasAction)
         {
             UnitId = unitId;
             RemainingMovement = remainingMovement;
@@ -10,7 +12,7 @@ namespace Tower.Core
         }
 
         public string UnitId { get; }
-        public int RemainingMovement { get; }
+        public float RemainingMovement { get; }
         public bool HasAction { get; }
     }
 }

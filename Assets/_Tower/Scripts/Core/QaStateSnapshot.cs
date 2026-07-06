@@ -19,6 +19,8 @@ namespace Tower.Core
         public int remainingOrders;
         // T19: bullet-time command mode overlay toggle state.
         public bool commandMode;
+        // T20: active battlefield implementation ("Grid" or "Analog").
+        public string spaceMode = string.Empty;
         public List<string> initiativeOrder = new List<string>();
         public List<QaUnitSnapshot> units = new List<QaUnitSnapshot>();
     }
@@ -30,8 +32,10 @@ namespace Tower.Core
         public int currentHp;
         public int maxHp;
         public bool alive;
-        public int x;
-        public int y;
+        // T20: continuous battlefield coordinates (grid mode reports cell
+        // centers); -1/-1 when the unit is not on the battlefield.
+        public float x;
+        public float y;
         public List<string> marks = new List<string>();
         // T19: the engine's pending ability when this unit holds the active
         // turn; empty otherwise (the engine tracks one pending pick at a time).

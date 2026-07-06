@@ -35,7 +35,7 @@ namespace Tower.Core
 
             for (var battleIndex = 0; battleIndex < options.battles; battleIndex++)
             {
-                var battle = CreateBattle(scenario, options.seed, battleIndex);
+                var battle = CreateBattle(scenario, options.seed, battleIndex, options.spaceMode);
                 if (battle.IsFailure)
                 {
                     return Result<AutoBattleSimulationResult>.Failure(battle.Error);
@@ -140,9 +140,14 @@ namespace Tower.Core
             return Result.Success();
         }
 
-        private static Result<BattleContext> CreateBattle(AutoBattleScenario scenario, int seed, int battleIndex)
+        private static Result<BattleContext> CreateBattle(AutoBattleScenario scenario, int seed, int battleIndex, CombatSpaceMode spaceMode)
         {
-            var map = new GridMap(scenario.Width, scenario.Height);
+            // T20: both space modes run through IBattlefield; grid remains a
+            // rollback path, analog is the default. Same seed + same mode =>
+            // the same battle, turn by turn.
+            IBattlefield battlefield = spaceMode == CombatSpaceMode.Grid
+                ? (IBattlefield)new GridBattlefieldAdapter(new GridMap(scenario.Width, scenario.Height))
+                : AnalogBattlefield.FromRoom(scenario.Width, scenario.Height);
             var combatants = new List<CombatantRef>();
             var unitTeams = new Dictionary<string, CombatTeam>(StringComparer.Ordinal);
 
@@ -159,7 +164,7 @@ namespace Tower.Core
 
                 combatants.Add(combatant.Value);
                 unitTeams[spec.UnitId] = spec.Team;
-                if (!map.TrySetOccupant(new GridPos(0, playerRows[index]), spec.UnitId))
+                if (!battlefield.TryPlaceOccupant(spec.UnitId, BattleScale.ToBattlePos(new GridPos(0, playerRows[index]))))
                 {
                     return Result<BattleContext>.Failure($"Could not place unit '{spec.UnitId}'.");
                 }
@@ -176,7 +181,7 @@ namespace Tower.Core
 
                 combatants.Add(combatant.Value);
                 unitTeams[spec.UnitId] = spec.Team;
-                if (!map.TrySetOccupant(new GridPos(scenario.Width - 1, enemyRows[index]), spec.UnitId))
+                if (!battlefield.TryPlaceOccupant(spec.UnitId, BattleScale.ToBattlePos(new GridPos(scenario.Width - 1, enemyRows[index]))))
                 {
                     return Result<BattleContext>.Failure($"Could not place unit '{spec.UnitId}'.");
                 }
@@ -184,7 +189,7 @@ namespace Tower.Core
 
             var statusBoard = new StatusBoard();
             var metrics = new CombatMetrics();
-            var resolver = AbilityResolver.Create(map, statusBoard, metrics);
+            var resolver = AbilityResolver.Create(battlefield, statusBoard, metrics);
             if (resolver.IsFailure)
             {
                 return Result<BattleContext>.Failure(resolver.Error);
@@ -200,13 +205,13 @@ namespace Tower.Core
                 return Result<BattleContext>.Failure(engine.Error);
             }
 
-            var scorer = ActionScorer.Create(map, statusBoard);
+            var scorer = ActionScorer.Create(battlefield, statusBoard);
             if (scorer.IsFailure)
             {
                 return Result<BattleContext>.Failure(scorer.Error);
             }
 
-            var driver = AiTurnDriver.Create(engine.Value, map, scorer.Value);
+            var driver = AiTurnDriver.Create(engine.Value, battlefield, scorer.Value);
             if (driver.IsFailure)
             {
                 return Result<BattleContext>.Failure(driver.Error);
