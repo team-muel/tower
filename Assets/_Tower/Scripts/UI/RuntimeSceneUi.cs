@@ -14,7 +14,9 @@ namespace Tower.UI
             var canvasObject = new GameObject(name);
             var canvas = canvasObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasObject.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            var scaler = canvasObject.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvasObject.AddComponent<CanvasResolutionScaler>();
             canvasObject.AddComponent<GraphicRaycaster>();
             return canvas;
         }
@@ -36,6 +38,32 @@ namespace Tower.UI
             layout.childForceExpandHeight = false;
             layout.childControlWidth = true;
             layout.childForceExpandWidth = true;
+            return rect;
+        }
+
+        /// <summary>
+        /// Create a panel with pure anchor-based positioning (no LayoutGroup).
+        /// Use this for HUD overlays where children must be placed freely via
+        /// RectTransform anchors without being stacked by a VerticalLayoutGroup.
+        /// </summary>
+        public static RectTransform CreateOverlayPanel(Transform parent, string name,
+            Vector2 anchorMin, Vector2 anchorMax, Color? bgColor = null)
+        {
+            var panel = new GameObject(name);
+            panel.transform.SetParent(parent, false);
+            var rect = panel.AddComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            if (bgColor.HasValue)
+            {
+                var image = panel.AddComponent<Image>();
+                image.color = bgColor.Value;
+                image.raycastTarget = false;
+            }
+
             return rect;
         }
 

@@ -111,6 +111,77 @@ namespace Tower.Tests.EditMode
             Assert.That(engine.Submit(new SkipTurnCommand("actor-a")).IsFailure, Is.True);
         }
 
+        [Test]
+        public void InitiativeOrder_RespectsAllyOrderChain()
+        {
+            // Chain order: ally3 (100) -> ally1 (90) -> ally2 (80)
+            var chain = new List<string> { "ally-3", "ally-1", "ally-2" };
+            var engine = CreateEngineWithChain(
+                chain,
+                Unit("ally-1", CombatTeam.Player, 5),
+                Unit("ally-2", CombatTeam.Player, 8),
+                Unit("ally-3", CombatTeam.Player, 2),
+                Unit("enemy-mid", CombatTeam.Enemy, 3)); // speed 3
+
+            // Initiative assigned: ally-3 (100) > ally-1 (90) > ally-2 (80) > enemy-mid (3)
+            Assert.That(engine.CurrentRoundOrder, Is.EqualTo(new[] { "ally-3", "ally-1", "ally-2", "enemy-mid" }));
+        }
+
+        [Test]
+        public void InitiativeOrder_MergesEnemiesAndAllyChain()
+        {
+            // Chain order: ally1 (100) -> ally2 (90)
+            var chain = new List<string> { "ally-1", "ally-2" };
+            var engine = CreateEngineWithChain(
+                chain,
+                Unit("ally-1", CombatTeam.Player, 5),
+                Unit("ally-2", CombatTeam.Player, 5),
+                Unit("enemy-fast", CombatTeam.Enemy, 95),  // speed 95 (inserted between ally1 and ally2)
+                Unit("enemy-ninja", CombatTeam.Enemy, 110)); // speed 110 (Ninja moves first!)
+
+            // Ninja (110) > ally-1 (100) > enemy-fast (95) > ally-2 (90)
+            Assert.That(engine.CurrentRoundOrder, Is.EqualTo(new[] { "enemy-ninja", "ally-1", "enemy-fast", "ally-2" }));
+        }
+
+        [Test]
+        public void InitiativeOrder_DeterminismWithTieBreaker()
+        {
+            // Chain order: ally1 (100) -> ally2 (90)
+            var chain = new List<string> { "ally-1", "ally-2" };
+            var engine = CreateEngineWithChain(
+                chain,
+                Unit("ally-1", CombatTeam.Player, 5),
+                Unit("ally-2", CombatTeam.Player, 5),
+                Unit("enemy-tie", CombatTeam.Enemy, 100)); // Speed 100, ties with ally-1
+
+            // Ties are broken by UnitId: "ally-1" vs "enemy-tie" (lexicographically ally-1 is first)
+            Assert.That(engine.CurrentRoundOrder, Is.EqualTo(new[] { "ally-1", "enemy-tie", "ally-2" }));
+        }
+
+        [Test]
+        public void CharacterDef_ChainLockedPropertySupport()
+        {
+            var def = CharacterDef.CreateRuntime(
+                "tester",
+                "Tester",
+                maxHp: 10,
+                attack: 2,
+                defense: 1,
+                speed: 5,
+                DispositionType.Aggressive,
+                new AbilityDef[0],
+                chainLocked: true);
+
+            Assert.That(def.ChainLocked, Is.True);
+        }
+
+        private TurnEngine CreateEngineWithChain(IReadOnlyList<string> chain, params CombatantRef[] combatants)
+        {
+            var result = TurnEngine.Create(combatants, allyOrderChain: chain);
+            Assert.That(result.IsSuccess, Is.True, result.Error);
+            return result.Value;
+        }
+
         private TurnEngine CreateEngine(params CombatantRef[] combatants)
         {
             var result = TurnEngine.Create(combatants);

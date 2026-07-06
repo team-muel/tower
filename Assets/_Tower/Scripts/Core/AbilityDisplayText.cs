@@ -82,5 +82,17 @@ namespace Tower.Core
                 baseSpeed + speedModifier,
                 sign);
         }
+
+        public static string BuildMemberChainStatsLine(string displayName, int maxHp, int baseSpeed, string chainSymbol, int initiative)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0} {1} | HP {2} | 기본속도 {3} (이니셔티브 {4})",
+                chainSymbol,
+                displayName,
+                maxHp,
+                baseSpeed,
+                initiative);
+        }
     }
 }

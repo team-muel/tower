@@ -5,7 +5,8 @@
     "Tower.Core",
     "Tower.Combat",
     "Tower.Gen",
-    "UnityEngine.UI"
+    "UnityEngine.UI",
+    "Unity.RenderPipelines.Universal.Runtime"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

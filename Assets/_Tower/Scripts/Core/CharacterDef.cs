@@ -18,6 +18,7 @@ namespace Tower.Core
         [SerializeField] private PassiveDef passive;
         [SerializeField] private AbilityDef[] defaultAbilities;
         [SerializeField] private bool isReturner;
+        [SerializeField] private bool chainLocked;
 
         // T12: preset companions are the hand-authored origin-style members
         // (one per faction). They secretly ignore the permanent three-death
@@ -35,6 +36,7 @@ namespace Tower.Core
         public PassiveDef Passive => passive;
         public AbilityDef[] DefaultAbilities => defaultAbilities;
         public bool IsReturner => isReturner;
+        public bool ChainLocked => chainLocked;
         public bool IsPreset => isPreset;
         public int FactionId => factionId;
 
@@ -50,7 +52,8 @@ namespace Tower.Core
             PassiveDef passive = null,
             bool isReturner = false,
             bool isPreset = false,
-            int factionId = NoFactionId)
+            int factionId = NoFactionId,
+            bool chainLocked = false)
         {
             var definition = CreateInstance<CharacterDef>();
             definition.id = id;
@@ -65,6 +68,7 @@ namespace Tower.Core
             definition.isReturner = isReturner;
             definition.isPreset = isPreset;
             definition.factionId = factionId;
+            definition.chainLocked = chainLocked;
             return definition;
         }
     }
