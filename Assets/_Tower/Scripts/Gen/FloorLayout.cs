@@ -12,7 +12,8 @@ namespace Tower.Gen
             IReadOnlyList<FloorRoom> rooms,
             IReadOnlyList<FloorEdge> edges,
             int entranceRoomId,
-            int exitRoomId)
+            int exitRoomId,
+            BiomeTheme biomeTheme)
         {
             if (rooms == null)
             {
@@ -29,12 +30,18 @@ namespace Tower.Gen
                 throw new ArgumentException("Floor layout requires at least one room.", nameof(rooms));
             }
 
+            if (biomeTheme == null)
+            {
+                throw new ArgumentNullException(nameof(biomeTheme));
+            }
+
             Seed = seed;
             IsBossFloor = isBossFloor;
             Rooms = new List<FloorRoom>(rooms);
             Edges = new List<FloorEdge>(edges);
             EntranceRoomId = entranceRoomId;
             ExitRoomId = exitRoomId;
+            BiomeTheme = biomeTheme;
         }
 
         public int Seed { get; }
@@ -49,13 +56,16 @@ namespace Tower.Gen
 
         public int ExitRoomId { get; }
 
+        public BiomeTheme BiomeTheme { get; }
+
         public string ToStableString()
         {
             StringBuilder builder = new StringBuilder();
             builder.Append("seed=").Append(Seed)
                 .Append(";bossFloor=").Append(IsBossFloor)
                 .Append(";entrance=").Append(EntranceRoomId)
-                .Append(";exit=").Append(ExitRoomId);
+                .Append(";exit=").Append(ExitRoomId)
+                .Append(";biome=").Append(BiomeTheme.Id);
 
             for (int i = 0; i < Rooms.Count; i++)
             {
@@ -64,6 +74,7 @@ namespace Tower.Gen
                     .Append(room.Id).Append(',')
                     .Append(room.Depth).Append(',')
                     .Append(room.Map.Width).Append('x').Append(room.Map.Height).Append(',')
+                    .Append(room.Kind).Append(',')
                     .Append(room.IsEntrance).Append(',')
                     .Append(room.IsExit).Append(',')
                     .Append(room.IsBossRoom).Append(',')

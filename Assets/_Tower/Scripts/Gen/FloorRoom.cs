@@ -14,7 +14,8 @@ namespace Tower.Gen
             FloorEncounter encounter,
             bool isEntrance,
             bool isExit,
-            bool isBossRoom)
+            bool isBossRoom,
+            RoomKind kind)
         {
             if (id < 0)
             {
@@ -49,6 +50,7 @@ namespace Tower.Gen
             IsEntrance = isEntrance;
             IsExit = isExit;
             IsBossRoom = isBossRoom;
+            Kind = kind;
         }
 
         public int Id { get; }
@@ -66,5 +68,7 @@ namespace Tower.Gen
         public bool IsExit { get; }
 
         public bool IsBossRoom { get; }
+
+        public RoomKind Kind { get; }
     }
 }

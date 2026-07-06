@@ -28,7 +28,9 @@ namespace Tower.Gen
             bool isBossFloor,
             IntRange roomSizeRange,
             IEnumerable<string> enemyKindSlots,
-            string bossKindSlot)
+            string bossKindSlot,
+            bool includeCamp = false,
+            BiomeId biomeId = BiomeId.Forest)
         {
             if (roomCountRange.Min < 3)
             {
@@ -82,6 +84,8 @@ namespace Tower.Gen
             RoomSizeRange = roomSizeRange;
             EnemyKindSlots = slots;
             BossKindSlot = bossKindSlot;
+            IncludeCamp = includeCamp;
+            BiomeId = biomeId;
         }
 
         public int Seed { get; }
@@ -95,5 +99,9 @@ namespace Tower.Gen
         public IReadOnlyList<string> EnemyKindSlots { get; }
 
         public string BossKindSlot { get; }
+
+        public bool IncludeCamp { get; }
+
+        public BiomeId BiomeId { get; }
     }
 }

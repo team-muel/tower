@@ -41,17 +41,20 @@ namespace Tower.Gen
                 BuildLinearGraph(random, maps, depths, doors, edges, exitRoomId);
             }
 
+            int campRoomId = parameters.IncludeCamp ? FindRoomBeforeExit(edges, exitRoomId) : -1;
             List<FloorRoom> rooms = new List<FloorRoom>();
             for (int id = 0; id < roomCount; id++)
             {
                 bool isEntrance = id == 0;
                 bool isExit = id == exitRoomId;
                 bool isBossRoom = parameters.IsBossFloor && isExit;
-                FloorEncounter encounter = CreateEncounter(parameters, id, maps[id], depths[id], isEntrance, isBossRoom);
-                rooms.Add(new FloorRoom(id, depths[id], maps[id], doors[id], encounter, isEntrance, isExit, isBossRoom));
+                bool isCamp = id == campRoomId;
+                RoomKind kind = GetRoomKind(isEntrance, isExit, isBossRoom, isCamp);
+                FloorEncounter encounter = CreateEncounter(parameters, id, maps[id], depths[id], isEntrance, isBossRoom, isCamp);
+                rooms.Add(new FloorRoom(id, depths[id], maps[id], doors[id], encounter, isEntrance, isExit, isBossRoom, kind));
             }
 
-            return new FloorLayout(parameters.Seed, parameters.IsBossFloor, rooms, edges, 0, exitRoomId);
+            return new FloorLayout(parameters.Seed, parameters.IsBossFloor, rooms, edges, 0, exitRoomId, BiomeTheme.For(parameters.BiomeId));
         }
 
         private static void BuildLinearGraph(
@@ -142,9 +145,10 @@ namespace Tower.Gen
             GridMap map,
             int depth,
             bool isEntrance,
-            bool isBossRoom)
+            bool isBossRoom,
+            bool isCamp)
         {
-            if (isEntrance)
+            if (isEntrance || isCamp)
             {
                 return FloorEncounter.None();
             }
@@ -164,6 +168,50 @@ namespace Tower.Gen
             }
 
             return new FloorEncounter(false, enemyCount, slots);
+        }
+
+        private static int FindRoomBeforeExit(IReadOnlyList<FloorEdge> edges, int exitRoomId)
+        {
+            for (int i = 0; i < edges.Count; i++)
+            {
+                FloorEdge edge = edges[i];
+                if (edge.RoomAId == exitRoomId)
+                {
+                    return edge.RoomBId;
+                }
+
+                if (edge.RoomBId == exitRoomId)
+                {
+                    return edge.RoomAId;
+                }
+            }
+
+            return -1;
+        }
+
+        private static RoomKind GetRoomKind(bool isEntrance, bool isExit, bool isBossRoom, bool isCamp)
+        {
+            if (isEntrance)
+            {
+                return RoomKind.Entrance;
+            }
+
+            if (isCamp)
+            {
+                return RoomKind.Camp;
+            }
+
+            if (isBossRoom)
+            {
+                return RoomKind.Boss;
+            }
+
+            if (isExit)
+            {
+                return RoomKind.Exit;
+            }
+
+            return RoomKind.Normal;
         }
 
         private static int NextInclusive(Random random, int min, int max)
