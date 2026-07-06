@@ -100,6 +100,8 @@ namespace Tower.Combat
                     return ExecuteState();
                 case QaCommandKind.Scene:
                     return ExecuteScene(parsed.Value.Argument);
+                case QaCommandKind.Dump:
+                    return ExecuteDump();
                 case QaCommandKind.Quit:
                     _quitRequested = true;
                     return QaProtocol.Ok;
@@ -108,6 +110,32 @@ namespace Tower.Combat
             }
         }
 
+        private static string ExecuteDump()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("OK ");
+            for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                sb.Append('[').Append(scene.name).Append(']');
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    sb.Append(' ').Append(root.name).Append(root.activeSelf ? "" : "(off)");
+                }
+                sb.Append(" | ");
+            }
+            var probe = new UnityEngine.GameObject("__ddol_probe");
+            UnityEngine.Object.DontDestroyOnLoad(probe);
+            var ddol = probe.scene;
+            sb.Append('[').Append(ddol.name).Append(']');
+            foreach (var root in ddol.GetRootGameObjects())
+            {
+                if (root.name == "__ddol_probe") { continue; }
+                sb.Append(' ').Append(root.name);
+            }
+            UnityEngine.Object.Destroy(probe);
+            return sb.ToString();
+        }
         private static string ExecutePress(string buttonName)
         {
             var registry = QaRuntime.Registry;

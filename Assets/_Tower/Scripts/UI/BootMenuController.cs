@@ -31,6 +31,7 @@ namespace Tower.UI
 
         private void BuildMenu()
         {
+            RuntimeSceneUi.EnsureClearCamera();
             var canvas = RuntimeSceneUi.CreateCanvas("Boot Canvas");
             var panel = RuntimeSceneUi.CreatePanel(
                 canvas.transform,

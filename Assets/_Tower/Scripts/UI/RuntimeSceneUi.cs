@@ -93,6 +93,23 @@ namespace Tower.UI
             return button;
         }
 
+        // Every scene needs a camera to CLEAR the framebuffer - a camera-less
+        // scene leaves stale pixels from the previous scene behind the overlay
+        // canvas (ghost UI bug, 2026-07-06).
+        public static void EnsureClearCamera()
+        {
+            if (UnityEngine.Object.FindFirstObjectByType<Camera>() != null)
+            {
+                return;
+            }
+
+            var cameraObject = new GameObject("Menu Clear Camera");
+            var camera = cameraObject.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.13f, 0.12f, 0.13f, 1f);
+            camera.cullingMask = 0;
+            camera.orthographic = true;
+        }
         private static void EnsureEventSystem()
         {
             if (UnityEngine.Object.FindFirstObjectByType<EventSystem>() != null)
