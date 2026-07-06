@@ -8,6 +8,8 @@ namespace Tower.Combat
     // -devcam camera tuning mode: I/K pitch, +/- distance, [/] FOV. Current
     // values are drawn top-left; P dumps them to %TEMP%\tower-cam.json so a
     // tuned setup can be promoted into Tower.Core.CameraTuning defaults.
+    // T19: drives whichever rig the scene runs - the combat OrbitCameraRig
+    // takes precedence, otherwise the iso follow rig.
     public sealed class CameraTuningModeController : MonoBehaviour
     {
         private const string DumpFileName = "tower-cam.json";
@@ -15,21 +17,18 @@ namespace Tower.Combat
         private const float DistanceMetersPerSecond = 5f;
         private const float FovDegreesPerSecond = 15f;
 
-        private IsoCameraRig _rig;
+        private IsoCameraRig _isoRig;
+        private OrbitCameraRig _orbitRig;
         private string _lastDumpMessage = string.Empty;
 
         private void Update()
         {
-            if (_rig == null)
+            if (!TryResolveRig())
             {
-                _rig = FindFirstObjectByType<IsoCameraRig>();
-                if (_rig == null)
-                {
-                    return;
-                }
+                return;
             }
 
-            var tuning = _rig.Tuning;
+            var tuning = CurrentTuning();
             float pitch = tuning.Pitch;
             float distance = tuning.Distance;
             float fov = tuning.Fov;
@@ -74,7 +73,7 @@ namespace Tower.Combat
 
             if (changed)
             {
-                _rig.ApplyTuning(new CameraTuningState(pitch, distance, fov, tuning.FollowDamping));
+                ApplyTuning(new CameraTuningState(pitch, distance, fov, tuning.FollowDamping));
             }
 
             if (Input.GetKeyDown(KeyCode.P))
@@ -85,27 +84,61 @@ namespace Tower.Combat
 
         private void OnGUI()
         {
-            if (_rig == null)
+            if (_orbitRig == null && _isoRig == null)
             {
                 return;
             }
 
-            var tuning = _rig.Tuning;
+            var tuning = CurrentTuning();
+            var rigName = _orbitRig != null ? "orbit" : "iso";
             var text = string.Format(
                 CultureInfo.InvariantCulture,
-                "DevCam  pitch {0:0.#}  distance {1:0.#}  fov {2:0.#}  damping {3:0.##}\nI/K pitch  +/- distance  [/] fov  P dump\n{4}",
+                "DevCam ({4})  pitch {0:0.#}  distance {1:0.#}  fov {2:0.#}  damping {3:0.##}\nI/K pitch  +/- distance  [/] fov  P dump\n{5}",
                 tuning.Pitch,
                 tuning.Distance,
                 tuning.Fov,
                 tuning.FollowDamping,
+                rigName,
                 _lastDumpMessage);
             GUI.Label(new Rect(10f, 10f, 720f, 72f), text);
+        }
+
+        // Rigs are recreated per encounter; re-resolve whenever both refs die.
+        private bool TryResolveRig()
+        {
+            if (_orbitRig == null && _isoRig == null)
+            {
+                _orbitRig = FindFirstObjectByType<OrbitCameraRig>();
+                if (_orbitRig == null)
+                {
+                    _isoRig = FindFirstObjectByType<IsoCameraRig>();
+                }
+            }
+
+            return _orbitRig != null || _isoRig != null;
+        }
+
+        private CameraTuningState CurrentTuning()
+        {
+            return _orbitRig != null ? _orbitRig.Tuning : _isoRig.Tuning;
+        }
+
+        private void ApplyTuning(CameraTuningState state)
+        {
+            if (_orbitRig != null)
+            {
+                _orbitRig.ApplyTuning(state);
+            }
+            else if (_isoRig != null)
+            {
+                _isoRig.ApplyTuning(state);
+            }
         }
 
         private void DumpToTemp()
         {
             var path = Path.Combine(Path.GetTempPath(), DumpFileName);
-            File.WriteAllText(path, _rig.Tuning.ToJson());
+            File.WriteAllText(path, CurrentTuning().ToJson());
             _lastDumpMessage = "Dumped to " + path;
             Debug.Log("[DevCam] " + _lastDumpMessage);
         }

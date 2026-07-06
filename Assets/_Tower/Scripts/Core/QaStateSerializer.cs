@@ -36,6 +36,7 @@ namespace Tower.Core
             builder.Append(",\"activeUnitId\":");
             WriteString(builder, combat.activeUnitId);
             builder.Append(",\"remainingOrders\":").Append(combat.remainingOrders.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"commandMode\":").Append(combat.commandMode ? "true" : "false");
             builder.Append(",\"initiativeOrder\":");
             WriteStringArray(builder, combat.initiativeOrder);
             builder.Append(",\"units\":[");
@@ -72,6 +73,8 @@ namespace Tower.Core
             builder.Append(",\"y\":").Append(unit.y.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"marks\":");
             WriteStringArray(builder, unit.marks);
+            builder.Append(",\"pendingAbility\":");
+            WriteString(builder, unit.pendingAbility);
             builder.Append('}');
         }
 
