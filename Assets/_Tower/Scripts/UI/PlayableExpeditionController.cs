@@ -495,7 +495,11 @@ namespace Tower.UI
 
             var presenter = new BattleHudPresenter(AddLog);
             hudPresenter = presenter;
-            var engineResult = TurnEngine.Create(combatants, presenter, resolver.Value);
+            var engineResult = TurnEngine.Create(
+                combatants,
+                presenter,
+                resolver.Value,
+                allyOrderChain: party.Select(m => m.UnitId).ToList());
             if (engineResult.IsFailure)
             {
                 AddLog(engineResult.Error);

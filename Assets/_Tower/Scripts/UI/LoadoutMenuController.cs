@@ -10,8 +10,9 @@ namespace Tower.UI
     public sealed class LoadoutMenuController : MonoBehaviour
     {
         private readonly Dictionary<string, Text> statsLines = new Dictionary<string, Text>();
-        private readonly Dictionary<string, Button> minusButtons = new Dictionary<string, Button>();
-        private readonly Dictionary<string, Button> plusButtons = new Dictionary<string, Button>();
+        private readonly Dictionary<string, RectTransform> entryTransforms = new Dictionary<string, RectTransform>();
+        private readonly Dictionary<string, Button> upButtons = new Dictionary<string, Button>();
+        private readonly Dictionary<string, Button> downButtons = new Dictionary<string, Button>();
         private readonly List<string> qaButtonNames = new List<string>();
         private TowerSliceContent content;
         private RuntimeTooltipView tooltip;
@@ -64,13 +65,14 @@ namespace Tower.UI
                 TextAnchor.MiddleCenter);
             RuntimeSceneUi.AddText(
                 panel,
-                "Speed Hint",
-                "속도 [-][+]로 턴 순서를 튜닝하세요 (범위 -2~+2) · 능력 위에 마우스를 올리면 상세 툴팁이 보입니다.",
+                "Chain Hint",
+                "행동 순서를 정하고 출발 — 순서가 연계를 만든다 · 능력 위에 마우스를 올리면 상세 툴팁이 보입니다.",
                 14,
                 TextAnchor.MiddleCenter);
 
             var listContent = CreatePartyScrollList(panel);
-            foreach (var id in TowerSliceContent.PartyIds)
+            var chain = TowerSliceContent.GetLoadoutChain();
+            foreach (var id in chain)
             {
                 AddMemberEntry(listContent, id);
             }
@@ -144,6 +146,8 @@ namespace Tower.UI
             entryLayout.childControlHeight = true;
             entryLayout.childForceExpandHeight = false;
 
+            entryTransforms[characterId] = entryObject.GetComponent<RectTransform>();
+
             statsLines[characterId] = RuntimeSceneUi.AddText(
                 entryObject.transform,
                 characterId + " Stats",
@@ -151,7 +155,7 @@ namespace Tower.UI
                 17,
                 TextAnchor.MiddleLeft);
 
-            var controls = new GameObject(characterId + " Speed Controls");
+            var controls = new GameObject(characterId + " Chain Controls");
             controls.transform.SetParent(entryObject.transform, false);
             var controlsLayout = controls.AddComponent<HorizontalLayoutGroup>();
             controlsLayout.spacing = 8f;
@@ -162,19 +166,17 @@ namespace Tower.UI
             controlsLayout.childForceExpandHeight = false;
             controls.AddComponent<LayoutElement>().minHeight = 46f;
 
-            // Speed rows repeat per character; give the buttons unique GameObject
-            // names so the QA registry (keyed by GameObject name) stays unambiguous.
-            var minus = RuntimeSceneUi.AddButton(controls.transform, "- Speed", () => AdjustSpeed(characterId, -1));
-            minus.gameObject.name = characterId + " - Speed Button";
-            minus.GetComponent<LayoutElement>().minWidth = 110f;
-            RegisterQaButton(minus);
-            minusButtons[characterId] = minus;
+            var up = RuntimeSceneUi.AddButton(controls.transform, "▲", () => MoveChain(characterId, -1));
+            up.gameObject.name = characterId + " Up Button";
+            up.GetComponent<LayoutElement>().minWidth = 110f;
+            RegisterQaButton(up);
+            upButtons[characterId] = up;
 
-            var plus = RuntimeSceneUi.AddButton(controls.transform, "+ Speed", () => AdjustSpeed(characterId, 1));
-            plus.gameObject.name = characterId + " + Speed Button";
-            plus.GetComponent<LayoutElement>().minWidth = 110f;
-            RegisterQaButton(plus);
-            plusButtons[characterId] = plus;
+            var down = RuntimeSceneUi.AddButton(controls.transform, "▼", () => MoveChain(characterId, 1));
+            down.gameObject.name = characterId + " Down Button";
+            down.GetComponent<LayoutElement>().minWidth = 110f;
+            RegisterQaButton(down);
+            downButtons[characterId] = down;
 
             RuntimeSceneUi.AddText(entryObject.transform, characterId + " Slots Header", "능력 슬롯", 13, TextAnchor.MiddleLeft);
             foreach (var ability in definition.DefaultAbilities)
@@ -244,39 +246,66 @@ namespace Tower.UI
             return button;
         }
 
-        private void AdjustSpeed(string characterId, int delta)
+        private void MoveChain(string characterId, int delta)
         {
             if (departing)
             {
                 return;
             }
 
-            TowerSliceContent.SetSpeedModifier(characterId, TowerSliceContent.GetSpeedModifier(characterId) + delta);
-            Refresh();
+            var chain = TowerSliceContent.GetLoadoutChain();
+            int index = chain.IndexOf(characterId);
+            if (index < 0) return;
+
+            int targetIndex = index + delta;
+            if (targetIndex >= 0 && targetIndex < chain.Count)
+            {
+                string temp = chain[index];
+                chain[index] = chain[targetIndex];
+                chain[targetIndex] = temp;
+                TowerSliceContent.SetLoadoutChain(chain);
+                Refresh();
+            }
         }
+
+        private static readonly string[] ChainSymbols = { "①", "②", "③", "④" };
+        private static readonly int[] InitiativeValues = { 100, 90, 80, 70 };
 
         private void Refresh()
         {
-            foreach (var pair in statsLines)
-            {
-                var definition = content.Characters[pair.Key];
-                var modifier = TowerSliceContent.GetSpeedModifier(pair.Key);
-                pair.Value.text = AbilityDisplayText.BuildMemberStatsLine(
-                    definition.DisplayName,
-                    definition.MaxHp,
-                    definition.Speed,
-                    modifier);
+            var chain = TowerSliceContent.GetLoadoutChain();
 
-                // Disable at the clamp bounds; the header hint states the
-                // -2..+2 range as the reason.
-                if (minusButtons.TryGetValue(pair.Key, out var minus))
+            for (int i = 0; i < chain.Count; i++)
+            {
+                var id = chain[i];
+                var definition = content.Characters[id];
+
+                var symbol = i < ChainSymbols.Length ? ChainSymbols[i] : "·";
+                var initiative = i < InitiativeValues.Length ? InitiativeValues[i] : 70;
+
+                if (statsLines.TryGetValue(id, out var text))
                 {
-                    minus.interactable = !departing && modifier > TowerSliceContent.MinSpeedModifier;
+                    text.text = AbilityDisplayText.BuildMemberChainStatsLine(
+                        definition.DisplayName,
+                        definition.MaxHp,
+                        definition.Speed,
+                        symbol,
+                        initiative);
                 }
 
-                if (plusButtons.TryGetValue(pair.Key, out var plus))
+                if (entryTransforms.TryGetValue(id, out var rect))
                 {
-                    plus.interactable = !departing && modifier < TowerSliceContent.MaxSpeedModifier;
+                    rect.SetSiblingIndex(i);
+                }
+
+                if (upButtons.TryGetValue(id, out var up))
+                {
+                    up.interactable = !departing && i > 0;
+                }
+
+                if (downButtons.TryGetValue(id, out var down))
+                {
+                    down.interactable = !departing && i < chain.Count - 1;
                 }
             }
         }

@@ -266,7 +266,10 @@ namespace Tower.Combat
                 return Result<CombatTeam?>.Failure(resolver.Error);
             }
 
-            var engine = TurnEngine.Create(combatants, abilityExecutor: resolver.Value);
+            var engine = TurnEngine.Create(
+                combatants,
+                abilityExecutor: resolver.Value,
+                allyOrderChain: party.Select(m => m.UnitId).ToList());
             if (engine.IsFailure)
             {
                 return Result<CombatTeam?>.Failure(engine.Error);

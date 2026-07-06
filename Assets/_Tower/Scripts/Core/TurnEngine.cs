@@ -18,6 +18,7 @@ namespace Tower.Core
         private readonly IAbilityExecutor abilityExecutor;
         private readonly ICombatObserver combatObserver;
         private readonly int seed;
+        private readonly IReadOnlyList<string> allyOrderChain;
         private List<string> roundOrder = new List<string>();
         private int activeOrderIndex;
         private bool combatEndObserved;
@@ -27,13 +28,15 @@ namespace Tower.Core
             IActionPresenter presenter,
             IAbilityExecutor abilityExecutor,
             ICombatObserver combatObserver,
-            int seed)
+            int seed,
+            IReadOnlyList<string> allyOrderChain)
         {
             this.combatants = combatants;
             this.presenter = presenter ?? new NullPresenter();
             this.abilityExecutor = abilityExecutor;
             this.combatObserver = combatObserver;
             this.seed = seed;
+            this.allyOrderChain = allyOrderChain;
             RoundNumber = 1;
             this.combatObserver?.OnCombatStarted(this);
             BeginRound();
@@ -57,7 +60,8 @@ namespace Tower.Core
             IActionPresenter presenter = null,
             IAbilityExecutor abilityExecutor = null,
             ICombatObserver combatObserver = null,
-            int seed = 0)
+            int seed = 0,
+            IReadOnlyList<string> allyOrderChain = null)
         {
             if (combatants == null)
             {
@@ -90,7 +94,7 @@ namespace Tower.Core
                 return Result<TurnEngine>.Failure("Combat requires at least two living teams.");
             }
 
-            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter, abilityExecutor, combatObserver, seed));
+            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter, abilityExecutor, combatObserver, seed, allyOrderChain));
         }
 
         public CombatantRef GetCombatant(string unitId)
@@ -335,11 +339,28 @@ namespace Tower.Core
             }
         }
 
+        private static readonly int[] ChainInitiativeTable = { 100, 90, 80, 70 };
+
+        private int GetInitiative(CombatantRef combatant)
+        {
+            if (combatant.Team == CombatTeam.Player && allyOrderChain != null)
+            {
+                for (int i = 0; i < allyOrderChain.Count; i++)
+                {
+                    if (StringComparer.Ordinal.Equals(allyOrderChain[i], combatant.UnitId))
+                    {
+                        return i < ChainInitiativeTable.Length ? ChainInitiativeTable[i] : 70;
+                    }
+                }
+            }
+            return combatant.State.EffectiveSpeed;
+        }
+
         private void BeginRound()
         {
             roundOrder = combatants.Values
                 .Where(IsAlive)
-                .OrderByDescending(combatant => combatant.State.EffectiveSpeed)
+                .OrderByDescending(GetInitiative)
                 .ThenBy(combatant => combatant.UnitId, StringComparer.Ordinal)
                 .Select(combatant => combatant.UnitId)
                 .ToList();

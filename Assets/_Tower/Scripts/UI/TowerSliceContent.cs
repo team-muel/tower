@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Tower.UI
 {
-    internal sealed class TowerSliceContent
+    public sealed class TowerSliceContent
     {
         private readonly Dictionary<string, CharacterDef> characters = new Dictionary<string, CharacterDef>(StringComparer.Ordinal);
 
@@ -56,10 +56,42 @@ namespace Tower.UI
             PlayerPrefs.Save();
         }
 
+        public static List<string> GetLoadoutChain()
+        {
+            var raw = PlayerPrefs.GetString("tower.loadout.chain", "regressor,ember,ward,glass");
+            var parts = raw.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            var list = new List<string>();
+            foreach (var part in parts)
+            {
+                var trimmed = part.Trim();
+                if (Array.IndexOf(PartyIds, trimmed) >= 0 && !list.Contains(trimmed))
+                {
+                    list.Add(trimmed);
+                }
+            }
+            // Ensure all PartyIds are present
+            foreach (var id in PartyIds)
+            {
+                if (!list.Contains(id))
+                {
+                    list.Add(id);
+                }
+            }
+            return list;
+        }
+
+        public static void SetLoadoutChain(List<string> chain)
+        {
+            if (chain == null) return;
+            PlayerPrefs.SetString("tower.loadout.chain", string.Join(",", chain));
+            PlayerPrefs.Save();
+        }
+
         public List<ExpeditionMember> CreateRosterFromLoadout()
         {
             var roster = new List<ExpeditionMember>();
-            foreach (var id in PartyIds)
+            var chain = GetLoadoutChain();
+            foreach (var id in chain)
             {
                 var definition = characters[id];
                 var state = CharacterState.Create(
