@@ -4,6 +4,7 @@
   "references": [
     "Tower.Core",
     "Tower.Combat",
+    "Tower.Gen",
     "UnityEngine.UI"
   ],
   "includePlatforms": [],
