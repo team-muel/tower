@@ -16,6 +16,7 @@ namespace Tower.Core
     {
         public int round;
         public string activeUnitId = string.Empty;
+        public int remainingOrders;
         public List<string> initiativeOrder = new List<string>();
         public List<QaUnitSnapshot> units = new List<QaUnitSnapshot>();
     }
@@ -42,6 +43,9 @@ namespace Tower.Core
         public int roomCount;
         public int retreatCount;
         public bool isComplete;
+        public string phase = string.Empty;
+        public string nextRoomPreview = string.Empty;
+        public string lastOutcome = string.Empty;
     }
 
     // Camp hub scene state: regressor ground position + active interaction zone.

@@ -35,6 +35,7 @@ namespace Tower.Core
             builder.Append("{\"round\":").Append(combat.round.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"activeUnitId\":");
             WriteString(builder, combat.activeUnitId);
+            builder.Append(",\"remainingOrders\":").Append(combat.remainingOrders.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"initiativeOrder\":");
             WriteStringArray(builder, combat.initiativeOrder);
             builder.Append(",\"units\":[");
@@ -90,6 +91,12 @@ namespace Tower.Core
             builder.Append(",\"roomCount\":").Append(expedition.roomCount.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"retreatCount\":").Append(expedition.retreatCount.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"isComplete\":").Append(expedition.isComplete ? "true" : "false");
+            builder.Append(",\"phase\":");
+            WriteString(builder, expedition.phase);
+            builder.Append(",\"nextRoomPreview\":");
+            WriteString(builder, expedition.nextRoomPreview);
+            builder.Append(",\"lastOutcome\":");
+            WriteString(builder, expedition.lastOutcome);
             builder.Append('}');
         }
 
