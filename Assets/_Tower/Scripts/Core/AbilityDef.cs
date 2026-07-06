@@ -10,6 +10,7 @@ namespace Tower.Core
         [SerializeField] private AbilityTag tag;
         [SerializeField] private MarkDef targetMark;
         [SerializeField] private int range = 1;
+        [SerializeField] private int cooldownRounds;
         [SerializeField] private int cost;
         [SerializeField] private int basePower;
         [SerializeField] private float amplificationMultiplier = 1f;
@@ -20,6 +21,7 @@ namespace Tower.Core
         public AbilityTag Tag => tag;
         public MarkDef TargetMark => targetMark;
         public int Range => range;
+        public int CooldownRounds => cooldownRounds;
         public int Cost => cost;
         public int BasePower => basePower;
         public float AmplificationMultiplier => amplificationMultiplier;
@@ -33,7 +35,8 @@ namespace Tower.Core
             AbilityTargetType targetType,
             MarkDef targetMark = null,
             float amplificationMultiplier = 1f,
-            string displayName = null)
+            string displayName = null,
+            int cooldownRounds = 0)
         {
             var ability = CreateInstance<AbilityDef>();
             ability.id = id;
@@ -44,6 +47,7 @@ namespace Tower.Core
             ability.basePower = basePower;
             ability.amplificationMultiplier = amplificationMultiplier;
             ability.targetType = targetType;
+            ability.cooldownRounds = cooldownRounds;
             return ability;
         }
     }

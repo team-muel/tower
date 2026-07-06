@@ -45,8 +45,8 @@ namespace Tower.Tests.EditMode
         {
             var repository = CreateRepository();
             var state = CreateExpedition(
-                CreateMember("regressor", maxHp: 60, attack: 10, speed: 8),
-                CreateMember("ally", maxHp: 60, attack: 10, speed: 7));
+                CreateMember("regressor", maxHp: 200, attack: 10, speed: 8),
+                CreateMember("ally", maxHp: 200, attack: 10, speed: 7));
             var factory = new TestEnemyFactory(this, maxHp: 2, attack: 0, speed: 1);
 
             var runner = ExpeditionRunner.Create(state, repository, factory, baseSeed: 424242);

@@ -16,17 +16,24 @@ namespace Tower.Core
         private List<string> roundOrder = new List<string>();
         private int activeOrderIndex;
         private bool combatEndObserved;
+        private readonly Random random;
+        private readonly Dictionary<string, string> targetOverrides = new Dictionary<string, string>(StringComparer.Ordinal);
+        private readonly bool disablePendingRules;
 
         private TurnEngine(
             Dictionary<string, CombatantRef> combatants,
             IActionPresenter presenter,
             IAbilityExecutor abilityExecutor,
-            ICombatObserver combatObserver)
+            ICombatObserver combatObserver,
+            Random random = null,
+            bool disablePendingRules = false)
         {
             this.combatants = combatants;
             this.presenter = presenter ?? new NullPresenter();
             this.abilityExecutor = abilityExecutor;
             this.combatObserver = combatObserver;
+            this.random = random ?? new Random();
+            this.disablePendingRules = disablePendingRules;
             RoundNumber = 1;
             this.combatObserver?.OnCombatStarted(this);
             BeginRound();
@@ -43,7 +50,9 @@ namespace Tower.Core
             IEnumerable<CombatantRef> combatants,
             IActionPresenter presenter = null,
             IAbilityExecutor abilityExecutor = null,
-            ICombatObserver combatObserver = null)
+            ICombatObserver combatObserver = null,
+            Random random = null,
+            bool disablePendingRules = false)
         {
             if (combatants == null)
             {
@@ -76,7 +85,7 @@ namespace Tower.Core
                 return Result<TurnEngine>.Failure("Combat requires at least two living teams.");
             }
 
-            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter, abilityExecutor, combatObserver));
+            return Result<TurnEngine>.Success(new TurnEngine(byId, presenter, abilityExecutor, combatObserver, random, disablePendingRules));
         }
 
         public CombatantRef GetCombatant(string unitId)
@@ -189,7 +198,8 @@ namespace Tower.Core
             CurrentTurn = new TurnState(
                 CurrentTurn.UnitId,
                 CurrentTurn.RemainingMovement - command.Distance,
-                CurrentTurn.HasAction);
+                CurrentTurn.HasAction,
+                CurrentTurn.PendingAbilityId);
             NotifyCommandCommitted(command);
             return Result.Success();
         }
@@ -224,19 +234,35 @@ namespace Tower.Core
                 targetUnitId: command.TargetUnitId));
             NotifyCommandCommitted(command);
 
-            if (IsCombatEnded || CurrentTurn == null)
+            // Cooldown registration
+            var caster = GetCombatant(command.UnitId);
+            var ability = FindAbility(caster, command.AbilityId);
+            if (ability != null && ability.CooldownRounds > 0)
             {
-                // Execution ended the combat (e.g. the last enemy was defeated).
-                return Result.Success();
+                UpdateCombatantState(command.UnitId, caster.State.WithCooldown(ability.Id, ability.CooldownRounds));
             }
 
-            CurrentTurn = new TurnState(CurrentTurn.UnitId, CurrentTurn.RemainingMovement, false);
-            AdvanceTurn();
+            // Clear target override on use
+            targetOverrides.Remove(command.UnitId);
+            if (CurrentTurn != null)
+            {
+                CurrentTurn = new TurnState(CurrentTurn.UnitId, CurrentTurn.RemainingMovement, false, CurrentTurn.PendingAbilityId);
+                AdvanceTurn();
+            }
             return Result.Success();
         }
 
         private void BeginRound()
         {
+            // Advance cooldowns for all living units at the start of the round
+            foreach (var kvp in combatants.ToList())
+            {
+                if (kvp.Value.IsAlive)
+                {
+                    UpdateCombatantState(kvp.Key, kvp.Value.State.AdvanceCooldowns());
+                }
+            }
+
             roundOrder = combatants.Values
                 .Where(IsAlive)
                 .OrderByDescending(combatant => combatant.State.EffectiveSpeed)
@@ -246,7 +272,7 @@ namespace Tower.Core
 
             activeOrderIndex = 0;
             CurrentTurn = roundOrder.Count > 0
-                ? new TurnState(roundOrder[activeOrderIndex], DefaultMovementPerTurn, true)
+                ? new TurnState(roundOrder[activeOrderIndex], DefaultMovementPerTurn, true, GetPendingAbilityId(GetCombatant(roundOrder[activeOrderIndex])))
                 : null;
             combatObserver?.OnRoundStarted(this, RoundNumber, roundOrder.AsReadOnly());
         }
@@ -263,7 +289,7 @@ namespace Tower.Core
                 if (IsAlive(roundOrder[index]))
                 {
                     activeOrderIndex = index;
-                    CurrentTurn = new TurnState(roundOrder[index], DefaultMovementPerTurn, true);
+                    CurrentTurn = new TurnState(roundOrder[index], DefaultMovementPerTurn, true, GetPendingAbilityId(GetCombatant(roundOrder[index])));
                     return;
                 }
             }
@@ -340,6 +366,114 @@ namespace Tower.Core
         private void NotifyCommandCommitted(TurnCommand command)
         {
             combatObserver?.OnCommandCommitted(this, command);
+        }
+
+        private string GetPendingAbilityId(CombatantRef combatant)
+        {
+            if (disablePendingRules)
+            {
+                return null;
+            }
+
+            if (combatant == null || combatant.State == null || combatant.State.Definition == null)
+            {
+                return null;
+            }
+
+            if (combatant.State.Definition.IsReturner)
+            {
+                return null;
+            }
+
+            if (combatant.Team == CombatTeam.Player)
+            {
+                return PickRandomPendingAbility(combatant);
+            }
+            return null;
+        }
+
+        private string PickRandomPendingAbility(CombatantRef combatant)
+        {
+            if (combatant == null || combatant.State == null || combatant.State.Loadout == null)
+            {
+                return null;
+            }
+
+            var abilities = combatant.State.Loadout.Abilities
+                .Where(ab => ab != null && ab.Tag != AbilityTag.None && (!combatant.State.Cooldowns.TryGetValue(ab.Id, out var cd) || cd <= 0))
+                .ToList();
+
+            if (abilities.Count == 0)
+            {
+                return null;
+            }
+
+            var index = random.Next(abilities.Count);
+            return abilities[index].Id;
+        }
+
+        private AbilityDef FindAbility(CombatantRef caster, string abilityId)
+        {
+            if (caster == null || caster.State == null || caster.State.Loadout == null)
+            {
+                return null;
+            }
+            return caster.State.Loadout.Abilities.FirstOrDefault(ab => ab != null && StringComparer.Ordinal.Equals(ab.Id, abilityId));
+        }
+
+        public Result SetPendingAbility(string unitId, string abilityId)
+        {
+            if (IsCombatEnded)
+            {
+                return Result.Failure("Combat has ended.");
+            }
+
+            if (CurrentTurn == null)
+            {
+                return Result.Failure("No active turn.");
+            }
+
+            if (!StringComparer.Ordinal.Equals(unitId, CurrentTurn.UnitId))
+            {
+                return Result.Failure("Unit is not active.");
+            }
+
+            var combatant = GetCombatant(unitId);
+            if (combatant == null)
+            {
+                return Result.Failure("Unknown unit.");
+            }
+
+            var ability = FindAbility(combatant, abilityId);
+            if (ability == null)
+            {
+                return Result.Failure($"Unit does not have ability '{abilityId}'.");
+            }
+
+            if (combatant.State.Cooldowns.TryGetValue(abilityId, out var cd) && cd > 0)
+            {
+                return Result.Failure($"Ability '{abilityId}' is on cooldown.");
+            }
+
+            CurrentTurn = new TurnState(CurrentTurn.UnitId, CurrentTurn.RemainingMovement, CurrentTurn.HasAction, abilityId);
+            return Result.Success();
+        }
+
+        public void SetTargetOverride(string unitId, string targetUnitId)
+        {
+            if (string.IsNullOrEmpty(targetUnitId))
+            {
+                targetOverrides.Remove(unitId);
+            }
+            else
+            {
+                targetOverrides[unitId] = targetUnitId;
+            }
+        }
+
+        public string GetTargetOverride(string unitId)
+        {
+            return targetOverrides.TryGetValue(unitId, out var target) ? target : null;
         }
     }
 }

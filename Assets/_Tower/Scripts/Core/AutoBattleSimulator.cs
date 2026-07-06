@@ -190,7 +190,7 @@ namespace Tower.Core
                 return Result<BattleContext>.Failure(resolver.Error);
             }
 
-            var engine = TurnEngine.Create(combatants, abilityExecutor: resolver.Value, combatObserver: metrics);
+            var engine = TurnEngine.Create(combatants, abilityExecutor: resolver.Value, combatObserver: metrics, random: new Random(seed + battleIndex), disablePendingRules: true);
             if (engine.IsFailure)
             {
                 return Result<BattleContext>.Failure(engine.Error);

@@ -84,7 +84,11 @@ namespace Tower.Core
                 return Result.Failure(target.Error);
             }
 
-            if (GridDistance.Manhattan(casterPosition.Value, target.Value.Position) > ability.Range)
+            float dx = casterPosition.Value.X - target.Value.Position.X;
+            float dy = casterPosition.Value.Y - target.Value.Position.Y;
+            float distance = (float)Math.Sqrt(dx * dx + dy * dy);
+
+            if (distance > ability.Range)
             {
                 return Result.Failure("Target is out of range.");
             }

@@ -53,7 +53,14 @@ namespace Tower.Core
                 new ActionScorer(map, statusBoard, weightTable ?? DispositionWeights.CreateDefaultTable()));
         }
 
-        public Result<AiPlan> ChooseAction(TurnEngine engine, string unitId)
+        private static float EuclideanDistance(GridPos a, GridPos b)
+        {
+            float dx = a.X - b.X;
+            float dy = a.Y - b.Y;
+            return (float)Math.Sqrt(dx * dx + dy * dy);
+        }
+
+        public Result<AiPlan> ChooseAction(TurnEngine engine, string unitId, string overrideAbilityId = null)
         {
             if (engine == null)
             {
@@ -91,6 +98,9 @@ namespace Tower.Core
             var hasAction = !isActiveUnit || engine.CurrentTurn.HasAction;
             var currentRound = engine.RoundNumber;
 
+            var pendingAbilityId = overrideAbilityId;
+            var targetOverrideId = engine.GetTargetOverride(unitId);
+
             var context = BuildContext(engine, actor);
             var reachable = ComputeReachableCells(actorPosition.Value, movementBudget, unitId);
             var preferredRange = ComputePreferredRange(actor);
@@ -117,9 +127,19 @@ namespace Tower.Core
                         continue;
                     }
 
+                    if (pendingAbilityId != null && !StringComparer.Ordinal.Equals(ability.Id, pendingAbilityId))
+                    {
+                        continue;
+                    }
+
+                    if (actor.State.Cooldowns.TryGetValue(ability.Id, out var cd) && cd > 0)
+                    {
+                        continue;
+                    }
+
                     foreach (var target in EnumerateTargets(ability, context))
                     {
-                        if (GridDistance.Manhattan(cell, target.Position) > ability.Range)
+                        if (EuclideanDistance(cell, target.Position) > ability.Range)
                         {
                             continue;
                         }
@@ -130,6 +150,19 @@ namespace Tower.Core
                         }
 
                         var actionScore = ScoreAbilityUse(actor, ability, target.Unit, weights, currentRound, context);
+
+                        if (!string.IsNullOrEmpty(targetOverrideId))
+                        {
+                            if (StringComparer.Ordinal.Equals(target.Unit.UnitId, targetOverrideId))
+                            {
+                                actionScore += 500f;
+                            }
+                            else
+                            {
+                                actionScore -= 1000f;
+                            }
+                        }
+
                         Consider(ref best, new AiPlan(
                             AiPlanKind.Ability,
                             cell,
@@ -310,13 +343,13 @@ namespace Tower.Core
             var score = 0f;
             if (context.Enemies.Count > 0)
             {
-                var nearest = int.MaxValue;
+                var nearest = float.MaxValue;
                 var adjacentEnemies = 0;
                 foreach (var enemy in context.Enemies)
                 {
-                    var distance = GridDistance.Manhattan(cell, enemy.Position);
+                    var distance = EuclideanDistance(cell, enemy.Position);
                     nearest = Math.Min(nearest, distance);
-                    if (distance == 1)
+                    if (distance <= 1.5f)
                     {
                         adjacentEnemies++;
                     }
@@ -329,7 +362,7 @@ namespace Tower.Core
             if (context.ProtectTargetPosition.HasValue)
             {
                 score -= weights.AllyProtectionWeight
-                    * GridDistance.Manhattan(cell, context.ProtectTargetPosition.Value);
+                    * EuclideanDistance(cell, context.ProtectTargetPosition.Value);
             }
 
             return score;

@@ -1,4 +1,5 @@
 using System;
+using UnityEngine;
 
 namespace Tower.Core
 {
@@ -6,11 +7,31 @@ namespace Tower.Core
     {
         // v0: Bresenham line between the endpoints; any blocked cell strictly
         // between caster and target breaks line of sight. Endpoints never block.
+        // Hybrid: If running inside Unity scene with valid physics, uses Raycast against Obstacle layer.
         public static bool IsClear(GridMap map, GridPos from, GridPos to)
         {
             if (map == null)
             {
                 throw new ArgumentNullException(nameof(map));
+            }
+
+            if (Application.isPlaying && Physics.defaultPhysicsScene.IsValid())
+            {
+                Vector3 start = new Vector3(from.X, 0.5f, from.Y);
+                Vector3 end = new Vector3(to.X, 0.5f, to.Y);
+                Vector3 direction = end - start;
+                float distance = direction.magnitude;
+
+                int mask = LayerMask.GetMask("Obstacle");
+                if (mask <= 0)
+                {
+                    mask = 1 << 8; // fallback to layer 8
+                }
+
+                if (Physics.Raycast(start, direction.normalized, out RaycastHit hit, distance, mask))
+                {
+                    return false; // Blocked by physical obstacle
+                }
             }
 
             var x = from.X;

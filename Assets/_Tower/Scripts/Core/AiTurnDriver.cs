@@ -52,7 +52,8 @@ namespace Tower.Core
             }
 
             var unitId = engine.CurrentTurn.UnitId;
-            var plan = scorer.ChooseAction(engine, unitId);
+            var pendingAbilityId = engine.CurrentTurn.PendingAbilityId;
+            var plan = scorer.ChooseAction(engine, unitId, pendingAbilityId);
             if (plan.IsFailure)
             {
                 return Result.Failure(plan.Error);
