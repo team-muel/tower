@@ -13,7 +13,7 @@ namespace Tower.Tests.EditMode
 
             var json = QaStateSerializer.ToJson(snapshot);
 
-            Assert.That(json, Is.EqualTo("{\"sceneName\":\"Boot\",\"combat\":null,\"expedition\":null}"));
+            Assert.That(json, Is.EqualTo("{\"sceneName\":\"Boot\",\"combat\":null,\"expedition\":null,\"camp\":null}"));
         }
 
         [Test]
@@ -76,8 +76,25 @@ namespace Tower.Tests.EditMode
                 + "{\"unitId\":\"enemy-1-0\",\"team\":\"Enemy\",\"currentHp\":0,\"maxHp\":10,\"alive\":false,\"x\":-1,\"y\":-1,\"marks\":[]}"
                 + "]},"
                 + "\"expedition\":{\"stairwayIndex\":1,\"stairwayCount\":1,\"floorIndex\":2,\"floorCount\":3,"
-                + "\"roomIndex\":1,\"roomCount\":4,\"retreatCount\":1,\"isComplete\":false}}";
+                + "\"roomIndex\":1,\"roomCount\":4,\"retreatCount\":1,\"isComplete\":false},"
+                + "\"camp\":null}";
             Assert.That(json, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ToJson_CampSnapshot_WritesPositionAndZone()
+        {
+            var snapshot = new QaStateSnapshot
+            {
+                sceneName = "Camp",
+                camp = new QaCampSnapshot { x = 1.5f, z = -2.25f, zoneId = "depart-gate" }
+            };
+
+            var json = QaStateSerializer.ToJson(snapshot);
+
+            Assert.That(
+                json,
+                Is.EqualTo("{\"sceneName\":\"Camp\",\"combat\":null,\"expedition\":null,\"camp\":{\"x\":1.5,\"z\":-2.25,\"zoneId\":\"depart-gate\"}}"));
         }
 
         [Test]
@@ -121,7 +138,7 @@ namespace Tower.Tests.EditMode
         {
             var json = QaStateSerializer.ToJson(null);
 
-            Assert.That(json, Is.EqualTo("{\"sceneName\":\"\",\"combat\":null,\"expedition\":null}"));
+            Assert.That(json, Is.EqualTo("{\"sceneName\":\"\",\"combat\":null,\"expedition\":null,\"camp\":null}"));
         }
     }
 }

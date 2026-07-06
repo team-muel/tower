@@ -9,6 +9,7 @@ namespace Tower.Core
         public string sceneName = string.Empty;
         public QaCombatSnapshot combat;
         public QaExpeditionSnapshot expedition;
+        public QaCampSnapshot camp;
     }
 
     public sealed class QaCombatSnapshot
@@ -41,5 +42,13 @@ namespace Tower.Core
         public int roomCount;
         public int retreatCount;
         public bool isComplete;
+    }
+
+    // Camp hub scene state: regressor ground position + active interaction zone.
+    public sealed class QaCampSnapshot
+    {
+        public float x;
+        public float z;
+        public string zoneId = string.Empty;
     }
 }
