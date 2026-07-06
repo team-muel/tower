@@ -6,6 +6,8 @@ using Tower.Combat;
 using Tower.Core;
 using Tower.Gen;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using CoreAiTurnDriver = Tower.Core.AiTurnDriver;
@@ -69,6 +71,9 @@ namespace Tower.UI
         private Tower.Gen.FloorLayout currentLayout;
         private GameObject dungeonMapOverlay;
         private bool isDungeonMapOpen;
+        private GameObject explorationRoomRoot;
+        private readonly List<ExplorationPortalAnchor> explorationPortals = new List<ExplorationPortalAnchor>();
+        private ExplorationPortalAnchor hoveredPortal;
 
         private void Start()
         {
@@ -92,6 +97,11 @@ namespace Tower.UI
 
             if (engine == null || awaitingNextFloor)
             {
+                if (engine == null && awaitingNextFloor && StringComparer.Ordinal.Equals(currentPhase, "exploration"))
+                {
+                    HandleExplorationPortalInput();
+                }
+
                 if (commandMode.SyncCombatActive(false))
                 {
                     OnCommandModeChanged();
@@ -247,173 +257,93 @@ namespace Tower.UI
         {
             var canvas = RuntimeSceneUi.CreateCanvas("Expedition Canvas");
 
-            var sidePanel = RuntimeSceneUi.CreatePanel(
-                canvas.transform,
-                "Expedition Panel",
-                new Vector2(0f, 0f),
-                new Vector2(1f, 1f),
-                Vector2.zero,
-                Vector2.zero);
+            // Root overlay: no Image, no LayoutGroup → 3D viewport shines through.
+            var root = RuntimeSceneUi.CreateOverlayPanel(
+                canvas.transform, "HUD Root",
+                Vector2.zero, Vector2.one);
 
-            var panelImage = sidePanel.GetComponent<UnityEngine.UI.Image>();
-            if (panelImage != null)
-            {
-                panelImage.color = new Color(0f, 0f, 0f, 0f);
-            }
+            // ── Top Bar (height ~5%) ──────────────────────────────────
+            var topBar = RuntimeSceneUi.CreateOverlayPanel(
+                root, "TopBar",
+                new Vector2(0f, 0.95f), Vector2.one,
+                new Color(0.08f, 0.08f, 0.10f, 0.6f));
 
-            var topLeftPanel = RuntimeSceneUi.CreatePanel(
-                sidePanel.transform,
-                "TopLeftPanel",
-                new Vector2(0.02f, 0.7f),
-                new Vector2(0.35f, 0.98f),
-                Vector2.zero,
-                Vector2.zero);
-            var tlImg = topLeftPanel.GetComponent<UnityEngine.UI.Image>();
-            if (tlImg != null) tlImg.color = new Color(0.1f, 0.1f, 0.1f, 0.65f);
-            
-            statusText = RuntimeSceneUi.AddText(topLeftPanel, "Status", "", 13, TextAnchor.UpperLeft);
-            var statusRect = statusText.rectTransform;
-            statusRect.anchorMin = Vector2.zero;
-            statusRect.anchorMax = Vector2.one;
-            statusRect.offsetMin = new Vector2(8f, 8f);
-            statusRect.offsetMax = new Vector2(-8f, -8f);
+            // Menu button (top-left, compact)
+            var menuBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topBar, "Menu", () => SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Boot)));
+            SetAnchors(menuBtn, new Vector2(0.01f, 0.1f), new Vector2(0.08f, 0.9f));
 
-            var topCenterPanel = RuntimeSceneUi.CreatePanel(
-                sidePanel.transform,
-                "TopCenterPanel",
-                new Vector2(0.38f, 0.85f),
-                new Vector2(0.62f, 0.98f),
-                Vector2.zero,
-                Vector2.zero);
-            var tcImg = topCenterPanel.GetComponent<UnityEngine.UI.Image>();
-            if (tcImg != null) tcImg.color = new Color(0.1f, 0.1f, 0.1f, 0.65f);
-            
-            explorationText = RuntimeSceneUi.AddText(topCenterPanel, "Exploration", "", 13, TextAnchor.UpperCenter);
-            var expRect = explorationText.rectTransform;
-            expRect.anchorMin = new Vector2(0f, 0.5f);
-            expRect.anchorMax = new Vector2(1f, 1f);
-            expRect.offsetMin = Vector2.zero;
-            expRect.offsetMax = Vector2.zero;
+            // Retreat button
+            var retreatBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topBar, "Retreat", Retreat));
+            SetAnchors(retreatBtn, new Vector2(0.09f, 0.1f), new Vector2(0.17f, 0.9f));
 
-            turnText = RuntimeSceneUi.AddText(topCenterPanel, "Turn", "", 12, TextAnchor.UpperCenter);
-            var turnRect = turnText.rectTransform;
-            turnRect.anchorMin = new Vector2(0f, 0f);
-            turnRect.anchorMax = new Vector2(1f, 0.5f);
-            turnRect.offsetMin = Vector2.zero;
-            turnRect.offsetMax = Vector2.zero;
+            // Exploration / status text (center of top bar)
+            explorationText = RuntimeSceneUi.AddText(topBar, "Exploration", "", 14, TextAnchor.MiddleCenter);
+            SetAnchors(explorationText, new Vector2(0.20f, 0f), new Vector2(0.80f, 1f));
 
-            var topRightPanel = RuntimeSceneUi.CreatePanel(
-                sidePanel.transform,
-                "TopRightPanel",
-                new Vector2(0.65f, 0.9f),
-                new Vector2(0.98f, 0.98f),
-                Vector2.zero,
-                Vector2.zero);
-            var trImg = topRightPanel.GetComponent<UnityEngine.UI.Image>();
-            if (trImg != null) trImg.color = new Color(0f, 0f, 0f, 0f);
+            // Turn info text (right of exploration)
+            turnText = RuntimeSceneUi.AddText(topBar, "Turn", "", 13, TextAnchor.MiddleCenter);
+            SetAnchors(turnText, new Vector2(0.80f, 0f), new Vector2(0.91f, 1f));
 
-            var menuBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topRightPanel, "Main Menu", () => SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Boot)));
-            var menuRect = menuBtn.GetComponent<RectTransform>();
-            menuRect.anchorMin = new Vector2(0f, 0f);
-            menuRect.anchorMax = new Vector2(0.3f, 1f);
-            menuRect.offsetMin = Vector2.zero;
-            menuRect.offsetMax = Vector2.zero;
+            // Map button (top-right, compact)
+            var mapBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topBar, "Map", ToggleDungeonMap));
+            SetAnchors(mapBtn, new Vector2(0.92f, 0.1f), new Vector2(0.99f, 0.9f));
 
-            var retreatBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topRightPanel, "Retreat", Retreat));
-            var retreatRect = retreatBtn.GetComponent<RectTransform>();
-            retreatRect.anchorMin = new Vector2(0.35f, 0f);
-            retreatRect.anchorMax = new Vector2(0.65f, 1f);
-            retreatRect.offsetMin = Vector2.zero;
-            retreatRect.offsetMax = Vector2.zero;
+            // ── Bottom-Left Panel: Initiative + Units (~22% wide, ~18% tall) ──
+            var bottomLeft = RuntimeSceneUi.CreateOverlayPanel(
+                root, "BottomLeft",
+                new Vector2(0.01f, 0.02f), new Vector2(0.25f, 0.24f),
+                new Color(0.06f, 0.06f, 0.08f, 0.50f));
 
-            var mapBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topRightPanel, "Map", ToggleDungeonMap));
-            var mapRect = mapBtn.GetComponent<RectTransform>();
-            mapRect.anchorMin = new Vector2(0.7f, 0f);
-            mapRect.anchorMax = new Vector2(1f, 1f);
-            mapRect.offsetMin = Vector2.zero;
-            mapRect.offsetMax = Vector2.zero;
+            initiativeText = RuntimeSceneUi.AddText(bottomLeft, "Initiative", "", 12, TextAnchor.UpperLeft);
+            SetAnchors(initiativeText, new Vector2(0f, 0.5f), Vector2.one, new Vector2(6f, 2f), new Vector2(-6f, -2f));
 
-            var bottomLeftPanel = RuntimeSceneUi.CreatePanel(
-                sidePanel.transform,
-                "BottomLeftPanel",
-                new Vector2(0.02f, 0.02f),
-                new Vector2(0.35f, 0.35f),
-                Vector2.zero,
-                Vector2.zero);
-            var blImg = bottomLeftPanel.GetComponent<UnityEngine.UI.Image>();
-            if (blImg != null) blImg.color = new Color(0.1f, 0.1f, 0.1f, 0.65f);
-            
-            initiativeText = RuntimeSceneUi.AddText(bottomLeftPanel, "Initiative", "", 13, TextAnchor.UpperLeft);
-            var initRect = initiativeText.rectTransform;
-            initRect.anchorMin = new Vector2(0f, 0.5f);
-            initRect.anchorMax = new Vector2(1f, 1f);
-            initRect.offsetMin = new Vector2(8f, 4f);
-            initRect.offsetMax = new Vector2(-8f, -4f);
+            unitText = RuntimeSceneUi.AddText(bottomLeft, "Units", "", 11, TextAnchor.UpperLeft);
+            SetAnchors(unitText, Vector2.zero, new Vector2(1f, 0.5f), new Vector2(6f, 2f), new Vector2(-6f, -2f));
 
-            unitText = RuntimeSceneUi.AddText(bottomLeftPanel, "Units", "", 12, TextAnchor.UpperLeft);
-            var unitRect = unitText.rectTransform;
-            unitRect.anchorMin = new Vector2(0f, 0f);
-            unitRect.anchorMax = new Vector2(1f, 0.5f);
-            unitRect.offsetMin = new Vector2(8f, 4f);
-            unitRect.offsetMax = new Vector2(-8f, -4f);
+            // ── Bottom-Center Panel: Status text (~30% wide, ~10% tall) ──
+            var bottomCenter = RuntimeSceneUi.CreateOverlayPanel(
+                root, "BottomCenter",
+                new Vector2(0.27f, 0.02f), new Vector2(0.55f, 0.16f),
+                new Color(0.06f, 0.06f, 0.08f, 0.50f));
 
-            var bottomCenterPanel = RuntimeSceneUi.CreatePanel(
-                sidePanel.transform,
-                "BottomCenterPanel",
-                new Vector2(0.38f, 0.02f),
-                new Vector2(0.98f, 0.22f),
-                Vector2.zero,
-                Vector2.zero);
-            var bcPanelImg = bottomCenterPanel.GetComponent<UnityEngine.UI.Image>();
-            if (bcPanelImg != null) bcPanelImg.color = new Color(0.1f, 0.1f, 0.1f, 0.65f);
+            statusText = RuntimeSceneUi.AddText(bottomCenter, "Status", "", 12, TextAnchor.UpperLeft);
+            SetAnchors(statusText, Vector2.zero, Vector2.one, new Vector2(6f, 2f), new Vector2(-6f, -2f));
 
-            resultText = RuntimeSceneUi.AddText(bottomCenterPanel, "Result", "", 13, TextAnchor.UpperLeft);
-            var resRect = resultText.rectTransform;
-            resRect.anchorMin = new Vector2(0f, 0.5f);
-            resRect.anchorMax = new Vector2(1f, 1f);
-            resRect.offsetMin = new Vector2(8f, 4f);
-            resRect.offsetMax = new Vector2(-8f, -4f);
+            // ── Bottom-Right Panel: Result + Log (~42% wide, ~18% tall) ──
+            var bottomRight = RuntimeSceneUi.CreateOverlayPanel(
+                root, "BottomRight",
+                new Vector2(0.57f, 0.02f), new Vector2(0.99f, 0.24f),
+                new Color(0.06f, 0.06f, 0.08f, 0.50f));
 
-            logText = RuntimeSceneUi.AddText(bottomCenterPanel, "Log", "", 12, TextAnchor.UpperLeft);
-            var logRect = logText.rectTransform;
-            logRect.anchorMin = new Vector2(0f, 0f);
-            logRect.anchorMax = new Vector2(1f, 0.5f);
-            logRect.offsetMin = new Vector2(8f, 4f);
-            logRect.offsetMax = new Vector2(-8f, -4f);
+            resultText = RuntimeSceneUi.AddText(bottomRight, "Result", "", 12, TextAnchor.UpperLeft);
+            SetAnchors(resultText, new Vector2(0f, 0.5f), Vector2.one, new Vector2(6f, 2f), new Vector2(-6f, -2f));
 
-            var centerDoorPanel = RuntimeSceneUi.CreatePanel(
-                sidePanel.transform,
-                "CenterDoorPanel",
-                new Vector2(0.35f, 0.35f),
-                new Vector2(0.65f, 0.65f),
-                Vector2.zero,
-                Vector2.zero);
-            var cdpImg = centerDoorPanel.GetComponent<UnityEngine.UI.Image>();
-            if (cdpImg != null) cdpImg.color = new Color(0f, 0f, 0f, 0f);
+            logText = RuntimeSceneUi.AddText(bottomRight, "Log", "", 11, TextAnchor.UpperLeft);
+            SetAnchors(logText, Vector2.zero, new Vector2(1f, 0.5f), new Vector2(6f, 2f), new Vector2(-6f, -2f));
+
+            // ── Center Door Panel (transparent, shown during exploration only) ──
+            var centerDoorPanel = RuntimeSceneUi.CreateOverlayPanel(
+                root, "CenterDoorPanel",
+                new Vector2(0.35f, 0.35f), new Vector2(0.65f, 0.65f));
 
             AddDoorButton(centerDoorPanel, "North Door");
             AddDoorButton(centerDoorPanel, "East Door");
             AddDoorButton(centerDoorPanel, "West Door");
-            
+
             for (int i = 0; i < doorButtons.Count; i++)
             {
-                var dRect = doorButtons[i].GetComponent<RectTransform>();
-                dRect.anchorMin = new Vector2(0.1f, 0.7f - (i * 0.3f));
-                dRect.anchorMax = new Vector2(0.9f, 0.9f - (i * 0.3f));
-                dRect.offsetMin = Vector2.zero;
-                dRect.offsetMax = Vector2.zero;
+                SetAnchors(doorButtons[i],
+                    new Vector2(0.1f, 0.7f - (i * 0.3f)),
+                    new Vector2(0.9f, 0.9f - (i * 0.3f)));
             }
 
-            proceedButton = RegisterQaButton(RuntimeSceneUi.AddButton(centerDoorPanel, "Next Floor", BeginNextFloor));
-            var procRect = proceedButton.GetComponent<RectTransform>();
-            procRect.anchorMin = new Vector2(0.1f, 0.1f);
-            procRect.anchorMax = new Vector2(0.9f, 0.4f);
-            procRect.offsetMin = Vector2.zero;
-            procRect.offsetMax = Vector2.zero;
+            proceedButton = RegisterQaButton(RuntimeSceneUi.AddButton(centerDoorPanel.transform, "Next Floor", BeginNextFloor));
+            SetAnchors(proceedButton, new Vector2(0.1f, 0.1f), new Vector2(0.9f, 0.4f));
             proceedButton.gameObject.SetActive(false);
 
+            // ── Hidden container for QA-registered combat action buttons ──
             var dummyContainer = new GameObject("Dummy Button Container");
-            dummyContainer.transform.SetParent(sidePanel.transform, false);
+            dummyContainer.transform.SetParent(root, false);
             dummyContainer.SetActive(false);
 
             moveButton = RegisterQaButton(RuntimeSceneUi.AddButton(dummyContainer.transform, "Move", EnterMoveMode));
@@ -426,6 +356,25 @@ namespace Tower.UI
             RegisterQaButton(RuntimeSceneUi.AddButton(dummyContainer.transform, "Skip Turn", SkipTurn));
 
             HideDoorButtons();
+        }
+
+        /// <summary>
+        /// Helper: set RectTransform anchors (and optional offsets) on a UI
+        /// component, bypassing any LayoutElement the component may have.
+        /// </summary>
+        private static void SetAnchors(Component component, Vector2 anchorMin, Vector2 anchorMax,
+            Vector2? offsetMin = null, Vector2? offsetMax = null)
+        {
+            if (component == null) return;
+            var rect = component.GetComponent<RectTransform>();
+            if (rect == null) return;
+            // Disable LayoutElement so anchors take priority.
+            var layout = component.GetComponent<LayoutElement>();
+            if (layout != null) layout.ignoreLayout = true;
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = offsetMin ?? Vector2.zero;
+            rect.offsetMax = offsetMax ?? Vector2.zero;
         }
 
         private void OpenRepository()
@@ -511,6 +460,14 @@ namespace Tower.UI
             encounterIndex = 0;
 
             AddLog($"Entered stairway {state.StairwayIndex}, floor {state.FloorIndex}. Rooms: {layout.Rooms.Count}, encounters: {encounterRooms.Count}.");
+
+            // Ensure the 3D camera exists during exploration so the scene is
+            // visible while selecting doors (instead of a black screen).
+            if (sceneCamera == null)
+            {
+                CreateCamera(Vector3.zero);
+            }
+
             ShowDoorChoiceOrClearFloor();
         }
 
@@ -526,19 +483,242 @@ namespace Tower.UI
             awaitingNextFloor = true;
             var room = encounterRooms[encounterIndex];
             nextRoomPreview = BuildRoomPreview(room);
+            BuildExplorationRoom(room);
             if (explorationText != null)
             {
-                explorationText.text = $"탐험 | {state.StairwayIndex}층계 · {state.FloorIndex}층 · 방 {encounterIndex + 1}/{encounterRooms.Count}\n"
-                    + $"다음 방: {nextRoomPreview}\n문을 골라 다음 방으로 이동";
+                explorationText.text = $"탐험 | {state.StairwayIndex}층계 · {state.FloorIndex}층 · 방 {encounterIndex + 1}/{encounterRooms.Count} | 다음: {nextRoomPreview}";
             }
 
             if (resultText != null)
             {
-                resultText.text = string.Empty;
+                resultText.text = "문 오브젝트를 클릭해 다음 방으로 이동";
             }
 
             RefreshCombatHud();
             ShowDoorButtons();
+        }
+
+        private void BuildExplorationRoom(FloorRoom room)
+        {
+            ClearExplorationRoom();
+
+            explorationRoomRoot = new GameObject("Exploration Room");
+            var root = explorationRoomRoot.transform;
+
+            CreateRoomBlock(root, "Room Floor", new Vector3(0f, -0.08f, 0.6f), new Vector3(10.5f, 0.16f, 8.4f), new Color(0.19f, 0.18f, 0.16f, 1f));
+            CreateRoomBlock(root, "Back Wall", new Vector3(0f, 1.4f, 4.65f), new Vector3(10.8f, 2.8f, 0.24f), new Color(0.13f, 0.12f, 0.12f, 1f));
+            CreateRoomBlock(root, "Left Wall", new Vector3(-5.3f, 1f, 0.6f), new Vector3(0.22f, 2f, 8.3f), new Color(0.11f, 0.11f, 0.12f, 1f));
+            CreateRoomBlock(root, "Right Wall", new Vector3(5.3f, 1f, 0.6f), new Vector3(0.22f, 2f, 8.3f), new Color(0.11f, 0.11f, 0.12f, 1f));
+
+            for (var x = -4; x <= 4; x += 2)
+            {
+                CreateRoomBlock(root, $"Floor Seam X{x}", new Vector3(x, 0.01f, 0.6f), new Vector3(0.035f, 0.02f, 8.1f), new Color(0.27f, 0.25f, 0.22f, 1f));
+            }
+
+            for (var z = -3; z <= 3; z += 2)
+            {
+                CreateRoomBlock(root, $"Floor Seam Z{z}", new Vector3(0f, 0.012f, z), new Vector3(10f, 0.02f, 0.035f), new Color(0.27f, 0.25f, 0.22f, 1f));
+            }
+
+            CreatePortal(root, 0, "North Door", "북쪽 문", room, new Vector3(0f, 0f, 3.65f), Quaternion.Euler(0f, 180f, 0f));
+            CreatePortal(root, 1, "East Door", "동쪽 문", room, new Vector3(3.75f, 0f, 1.05f), Quaternion.Euler(0f, -125f, 0f));
+            CreatePortal(root, 2, "West Door", "서쪽 문", room, new Vector3(-3.75f, 0f, 1.05f), Quaternion.Euler(0f, 125f, 0f));
+
+            CreateOrbCue(root, "Memory Orb Cue", new Vector3(-2.3f, 0.72f, -1.9f), new Color(0.42f, 0.82f, 1f, 1f), "기억 오브");
+            CreateRoomBlock(root, "Relic Container", new Vector3(2.4f, 0.28f, -2.05f), new Vector3(0.95f, 0.55f, 0.65f), new Color(0.55f, 0.42f, 0.22f, 1f));
+            CreateRoomBlock(root, "Hazard Marker", new Vector3(0f, 0.025f, -2.6f), new Vector3(2.2f, 0.05f, 0.42f), new Color(0.55f, 0.12f, 0.12f, 1f));
+
+            if (sceneCamera == null)
+            {
+                CreateCamera(new Vector3(0f, 0f, 0.8f));
+            }
+            else if (orbitRig != null)
+            {
+                orbitRig.FocusWorld(new Vector3(0f, 0f, 0.8f));
+                orbitRig.SetDistance(12.5f);
+            }
+
+            foreach (var portal in explorationPortals)
+            {
+                portal.SetCamera(sceneCamera);
+            }
+        }
+
+        private GameObject CreateRoomBlock(Transform parent, string name, Vector3 position, Vector3 scale, Color color)
+        {
+            var block = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            block.name = name;
+            block.transform.SetParent(parent, false);
+            block.transform.localPosition = position;
+            block.transform.localScale = scale;
+            block.GetComponent<Renderer>().sharedMaterial = TowerRuntimeMaterials.CreateLit(name + " Material", color);
+            var collider = block.GetComponent<Collider>();
+            if (collider != null)
+            {
+                collider.enabled = false;
+            }
+
+            return block;
+        }
+
+        private void CreatePortal(Transform parent, int doorIndex, string qaLabel, string displayLabel, FloorRoom room, Vector3 position, Quaternion rotation)
+        {
+            var portal = new GameObject(qaLabel + " Anchor");
+            portal.transform.SetParent(parent, false);
+            portal.transform.localPosition = position;
+            portal.transform.localRotation = rotation;
+
+            var anchor = portal.AddComponent<ExplorationPortalAnchor>();
+            anchor.DoorIndex = doorIndex;
+            anchor.QaLabel = qaLabel;
+            anchor.DisplayLabel = displayLabel;
+            anchor.Preview = BuildRoomPreview(room);
+            anchor.BaseColor = PortalColor(room, false);
+            anchor.HoverColor = PortalColor(room, true);
+            explorationPortals.Add(anchor);
+
+            CreatePortalBlock(portal.transform, "Left Pillar", new Vector3(-0.72f, 0.78f, 0f), new Vector3(0.22f, 1.55f, 0.25f), anchor.BaseColor, anchor);
+            CreatePortalBlock(portal.transform, "Right Pillar", new Vector3(0.72f, 0.78f, 0f), new Vector3(0.22f, 1.55f, 0.25f), anchor.BaseColor, anchor);
+            CreatePortalBlock(portal.transform, "Lintel", new Vector3(0f, 1.56f, 0f), new Vector3(1.68f, 0.22f, 0.25f), anchor.BaseColor, anchor);
+            CreatePortalBlock(portal.transform, "Portal Glow", new Vector3(0f, 0.82f, -0.03f), new Vector3(1.16f, 1.2f, 0.08f), new Color(anchor.BaseColor.r, anchor.BaseColor.g, anchor.BaseColor.b, 0.88f), anchor);
+
+            var hitbox = new GameObject("Portal Hitbox");
+            hitbox.transform.SetParent(portal.transform, false);
+            hitbox.transform.localPosition = new Vector3(0f, 0.8f, 0f);
+            hitbox.transform.localScale = new Vector3(1.9f, 1.9f, 0.6f);
+            hitbox.AddComponent<BoxCollider>().isTrigger = true;
+
+            var labelObject = new GameObject("Portal Label");
+            labelObject.transform.SetParent(portal.transform, false);
+            labelObject.transform.localPosition = new Vector3(0f, 2.05f, -0.08f);
+            labelObject.transform.localScale = Vector3.one * 0.12f;
+            var label = labelObject.AddComponent<TextMesh>();
+            label.text = $"{displayLabel}\n{anchor.Preview}";
+            label.fontSize = 42;
+            label.alignment = TextAlignment.Center;
+            label.anchor = TextAnchor.MiddleCenter;
+            label.color = new Color(0.95f, 0.96f, 0.92f, 1f);
+            labelObject.AddComponent<FaceCamera>().Target = sceneCamera;
+            anchor.Label = label;
+        }
+
+        private void CreatePortalBlock(Transform parent, string name, Vector3 position, Vector3 scale, Color color, ExplorationPortalAnchor anchor)
+        {
+            var block = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            block.name = name;
+            block.transform.SetParent(parent, false);
+            block.transform.localPosition = position;
+            block.transform.localScale = scale;
+            var renderer = block.GetComponent<Renderer>();
+            renderer.sharedMaterial = TowerRuntimeMaterials.CreateLit(name + " Material", color);
+            anchor.Register(renderer);
+            var collider = block.GetComponent<Collider>();
+            if (collider != null)
+            {
+                Destroy(collider);
+            }
+        }
+
+        private void CreateOrbCue(Transform parent, string name, Vector3 position, Color color, string label)
+        {
+            var orb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            orb.name = name;
+            orb.transform.SetParent(parent, false);
+            orb.transform.localPosition = position;
+            orb.transform.localScale = Vector3.one * 0.38f;
+            orb.GetComponent<Renderer>().sharedMaterial = TowerRuntimeMaterials.CreateLit(name + " Material", color);
+            var collider = orb.GetComponent<Collider>();
+            if (collider != null)
+            {
+                collider.enabled = false;
+            }
+
+            var textObject = new GameObject(name + " Label");
+            textObject.transform.SetParent(parent, false);
+            textObject.transform.localPosition = position + new Vector3(0f, 0.48f, 0f);
+            textObject.transform.localScale = Vector3.one * 0.09f;
+            var text = textObject.AddComponent<TextMesh>();
+            text.text = label;
+            text.fontSize = 36;
+            text.alignment = TextAlignment.Center;
+            text.anchor = TextAnchor.MiddleCenter;
+            text.color = new Color(0.82f, 0.94f, 1f, 1f);
+            textObject.AddComponent<FaceCamera>().Target = sceneCamera;
+        }
+
+        private static Color PortalColor(FloorRoom room, bool hover)
+        {
+            if (room != null && room.Encounter.IsBoss)
+            {
+                return hover ? new Color(1f, 0.42f, 0.34f, 1f) : new Color(0.62f, 0.16f, 0.12f, 1f);
+            }
+
+            if (room != null && room.Encounter.EnemyCount >= 3)
+            {
+                return hover ? new Color(1f, 0.7f, 0.28f, 1f) : new Color(0.64f, 0.36f, 0.13f, 1f);
+            }
+
+            return hover ? new Color(0.36f, 0.82f, 1f, 1f) : new Color(0.16f, 0.48f, 0.68f, 1f);
+        }
+
+        private void HandleExplorationPortalInput()
+        {
+            if (sceneCamera == null || explorationPortals.Count == 0 || isDungeonMapOpen)
+            {
+                SetHoveredPortal(null);
+                return;
+            }
+
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            {
+                SetHoveredPortal(null);
+                return;
+            }
+
+            var ray = sceneCamera.ScreenPointToRay(Input.mousePosition);
+            if (!Physics.Raycast(ray, out var hit))
+            {
+                SetHoveredPortal(null);
+                return;
+            }
+
+            var portal = hit.collider != null ? hit.collider.GetComponentInParent<ExplorationPortalAnchor>() : null;
+            SetHoveredPortal(portal);
+            if (portal != null && Input.GetMouseButtonDown(0))
+            {
+                AddLog($"{portal.DisplayLabel} 선택: {portal.Preview}");
+                EnterSelectedDoor();
+            }
+        }
+
+        private void SetHoveredPortal(ExplorationPortalAnchor portal)
+        {
+            if (hoveredPortal == portal)
+            {
+                return;
+            }
+
+            if (hoveredPortal != null)
+            {
+                hoveredPortal.SetHighlighted(false);
+            }
+
+            hoveredPortal = portal;
+            if (hoveredPortal != null)
+            {
+                hoveredPortal.SetHighlighted(true);
+            }
+        }
+
+        private void ClearExplorationRoom()
+        {
+            SetHoveredPortal(null);
+            explorationPortals.Clear();
+            if (explorationRoomRoot != null)
+            {
+                Destroy(explorationRoomRoot);
+                explorationRoomRoot = null;
+            }
         }
 
         private void StartEncounter(FloorRoom room)
@@ -866,6 +1046,7 @@ namespace Tower.UI
 
             if (winner == CombatTeam.Player)
             {
+                ClearBattleObjects();
                 ShowDoorChoiceOrClearFloor();
             }
             else
@@ -1093,7 +1274,7 @@ namespace Tower.UI
             }
 
             var active = engine.CurrentTurn?.UnitId ?? "none";
-            turnText.text = $"Round {engine.RoundNumber} | Active: {active}";
+            turnText.text = $"R{engine.RoundNumber} | {active}";
             var isPlayerTurn = IsManualTurn();
             if (moveButton != null)
             {
@@ -1118,7 +1299,7 @@ namespace Tower.UI
 
             statusText.text = $"Stairway {state.StairwayIndex}/{state.StairwayCount} | Floor {state.FloorIndex}/{state.FloorCount}\n"
                 + $"Retreats {state.RetreatCount}/3 | Roster {state.Roster.Count}\n"
-                + string.Join("\n", state.Roster.Select(member => $"{member.UnitId}: {member.State.CurrentHp}/{member.State.Definition.MaxHp} HP, deaths {member.State.DeathCount}"));
+                + string.Join(" · ", state.Roster.Select(member => $"{member.UnitId} {member.State.CurrentHp}/{member.State.Definition.MaxHp}"));
         }
 
         private void RefreshCombatHud()
@@ -1181,7 +1362,7 @@ namespace Tower.UI
             }
 
             logLines.Add(message);
-            while (logLines.Count > 12)
+            while (logLines.Count > 4)
             {
                 logLines.RemoveAt(0);
             }
@@ -1232,6 +1413,8 @@ namespace Tower.UI
                     var baseLabel = button.gameObject.name.Replace(" Button", string.Empty);
                     text.text = baseLabel + " (" + nextRoomPreview + ")";
                 }
+
+                button.gameObject.SetActive(false);
             }
         }
 
@@ -1339,6 +1522,7 @@ namespace Tower.UI
         private void ClearBattleObjects()
         {
             TearDownCommandMode();
+            ClearExplorationRoom();
             foreach (var token in tokens.Values)
             {
                 if (token != null)
@@ -1390,7 +1574,17 @@ namespace Tower.UI
             orbitRig = cameraRigObject.AddComponent<OrbitCameraRig>();
             orbitRig.FocusWorld(focusWorld);
             sceneCamera = orbitRig.Camera;
+            sceneCamera.clearFlags = CameraClearFlags.SolidColor;
+            sceneCamera.backgroundColor = new Color(0.055f, 0.06f, 0.07f, 1f);
             focusedUnitId = null;
+
+            foreach (var portal in explorationPortals)
+            {
+                if (portal != null)
+                {
+                    portal.SetCamera(sceneCamera);
+                }
+            }
         }
 
         private void CreateCommandOverlay(List<ExpeditionMember> party)
@@ -1490,7 +1684,14 @@ namespace Tower.UI
             var light = lightObject.AddComponent<Light>();
             light.type = LightType.Directional;
             light.intensity = 1.2f;
+            light.color = new Color(1f, 0.92f, 0.78f, 1f);
             lightObject.transform.rotation = Quaternion.Euler(50f, -35f, 0f);
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.18f, 0.16f, 0.14f, 1f);
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Exponential;
+            RenderSettings.fogColor = new Color(0.09f, 0.08f, 0.08f, 1f);
+            RenderSettings.fogDensity = 0.025f;
         }
 
         private void SyncTokens()
@@ -1630,26 +1831,20 @@ namespace Tower.UI
             var canvasGo = GameObject.Find("Expedition Canvas");
             if (canvasGo == null) return;
 
-            dungeonMapOverlay = RuntimeSceneUi.CreatePanel(
+            dungeonMapOverlay = RuntimeSceneUi.CreateOverlayPanel(
                 canvasGo.transform,
                 "Dungeon Map Overlay",
                 new Vector2(0.15f, 0.15f),
                 new Vector2(0.85f, 0.85f),
-                Vector2.zero,
-                Vector2.zero).gameObject;
-
-            var image = dungeonMapOverlay.GetComponent<UnityEngine.UI.Image>();
-            if (image != null)
+                new Color(0.05f, 0.05f, 0.05f, 0.95f)).gameObject;
+            var mapBackground = dungeonMapOverlay.GetComponent<Image>();
+            if (mapBackground != null)
             {
-                image.color = new Color(0.05f, 0.05f, 0.05f, 0.95f);
+                mapBackground.raycastTarget = true;
             }
 
             var title = RuntimeSceneUi.AddText(dungeonMapOverlay.transform, "MapTitle", "던전 지도 (Tab/M을 눌러 닫기)", 22, TextAnchor.UpperCenter);
-            var titleRect = title.rectTransform;
-            titleRect.anchorMin = new Vector2(0f, 0.9f);
-            titleRect.anchorMax = new Vector2(1f, 1f);
-            titleRect.offsetMin = Vector2.zero;
-            titleRect.offsetMax = Vector2.zero;
+            SetAnchors(title, new Vector2(0f, 0.9f), new Vector2(1f, 1f));
 
             var container = new GameObject("Map Container");
             container.transform.SetParent(dungeonMapOverlay.transform, false);
@@ -1706,44 +1901,105 @@ namespace Tower.UI
                 float normX = Mathf.Lerp(0.05f, 0.95f, x);
                 float normY = Mathf.Lerp(0.15f, 0.85f, y);
 
-                var nodePanel = RuntimeSceneUi.CreatePanel(
+                bool isCurrent = false;
+                if (encounterIndex >= 0 && encounterIndex < encounterRooms.Count)
+                {
+                    isCurrent = encounterRooms[encounterIndex].Id == r.Id;
+                }
+
+                Color nodeColor;
+                if (isCurrent)
+                {
+                    nodeColor = new Color(0.1f, 0.5f, 0.1f, 0.9f);
+                }
+                else if (r.Id < (encounterIndex >= 0 && encounterIndex < encounterRooms.Count ? encounterRooms[encounterIndex].Id : 999))
+                {
+                    nodeColor = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+                }
+                else
+                {
+                    nodeColor = new Color(0.3f, 0.3f, 0.35f, 0.8f);
+                }
+
+                var nodePanel = RuntimeSceneUi.CreateOverlayPanel(
                     container,
                     $"RoomNode_{r.Id}",
                     new Vector2(normX - 0.06f, normY - 0.08f),
                     new Vector2(normX + 0.06f, normY + 0.08f),
-                    Vector2.zero,
-                    Vector2.zero);
-
-                var img = nodePanel.GetComponent<UnityEngine.UI.Image>();
-                if (img != null)
-                {
-                    bool isCurrent = false;
-                    if (encounterIndex >= 0 && encounterIndex < encounterRooms.Count)
-                    {
-                        isCurrent = encounterRooms[encounterIndex].Id == r.Id;
-                    }
-
-                    if (isCurrent)
-                    {
-                        img.color = new Color(0.1f, 0.5f, 0.1f, 0.9f);
-                    }
-                    else if (r.Id < (encounterIndex >= 0 && encounterIndex < encounterRooms.Count ? encounterRooms[encounterIndex].Id : 999))
-                    {
-                        img.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
-                    }
-                    else
-                    {
-                        img.color = new Color(0.3f, 0.3f, 0.35f, 0.8f);
-                    }
-                }
+                    nodeColor);
 
                 string roomType = r.IsBossRoom ? "보스" : (r.IsEntrance ? "입구" : (r.IsExit ? "출구" : (r.Encounter.HasEncounter ? "조우" : "빈 방")));
                 string currentLabel = "";
-                if (encounterIndex >= 0 && encounterIndex < encounterRooms.Count && encounterRooms[encounterIndex].Id == r.Id)
+                if (isCurrent)
                 {
                     currentLabel = "<color=#FFEB3B>[현재]</color>\n";
                 }
-                RuntimeSceneUi.AddText(nodePanel, "Label", $"{currentLabel}방 {r.Id}\n({roomType})", 12, TextAnchor.MiddleCenter);
+                var nodeText = RuntimeSceneUi.AddText(nodePanel, "Label", $"{currentLabel}방 {r.Id}\n({roomType})", 12, TextAnchor.MiddleCenter);
+                SetAnchors(nodeText, Vector2.zero, Vector2.one);
+            }
+        }
+
+        private sealed class ExplorationPortalAnchor : MonoBehaviour
+        {
+            private readonly List<Renderer> renderers = new List<Renderer>();
+
+            public int DoorIndex;
+            public string QaLabel;
+            public string DisplayLabel;
+            public string Preview;
+            public Color BaseColor;
+            public Color HoverColor;
+            public TextMesh Label;
+
+            public void Register(Renderer renderer)
+            {
+                if (renderer != null)
+                {
+                    renderers.Add(renderer);
+                }
+            }
+
+            public void SetHighlighted(bool highlighted)
+            {
+                var color = highlighted ? HoverColor : BaseColor;
+                foreach (var renderer in renderers)
+                {
+                    if (renderer != null && renderer.material != null)
+                    {
+                        renderer.material.color = color;
+                    }
+                }
+
+                if (Label != null)
+                {
+                    Label.color = highlighted
+                        ? new Color(1f, 0.95f, 0.62f, 1f)
+                        : new Color(0.95f, 0.96f, 0.92f, 1f);
+                }
+            }
+
+            public void SetCamera(Camera camera)
+            {
+                var faces = GetComponentsInChildren<FaceCamera>();
+                foreach (var face in faces)
+                {
+                    face.Target = camera;
+                }
+            }
+        }
+
+        private sealed class FaceCamera : MonoBehaviour
+        {
+            public Camera Target;
+
+            private void LateUpdate()
+            {
+                if (Target == null)
+                {
+                    return;
+                }
+
+                transform.rotation = Quaternion.LookRotation(transform.position - Target.transform.position, Vector3.up);
             }
         }
     }

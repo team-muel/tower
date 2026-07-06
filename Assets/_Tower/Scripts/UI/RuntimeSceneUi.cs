@@ -41,6 +41,32 @@ namespace Tower.UI
             return rect;
         }
 
+        /// <summary>
+        /// Create a panel with pure anchor-based positioning (no LayoutGroup).
+        /// Use this for HUD overlays where children must be placed freely via
+        /// RectTransform anchors without being stacked by a VerticalLayoutGroup.
+        /// </summary>
+        public static RectTransform CreateOverlayPanel(Transform parent, string name,
+            Vector2 anchorMin, Vector2 anchorMax, Color? bgColor = null)
+        {
+            var panel = new GameObject(name);
+            panel.transform.SetParent(parent, false);
+            var rect = panel.AddComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            if (bgColor.HasValue)
+            {
+                var image = panel.AddComponent<Image>();
+                image.color = bgColor.Value;
+                image.raycastTarget = false;
+            }
+
+            return rect;
+        }
+
         public static Text AddText(Transform parent, string name, string value, int fontSize, TextAnchor alignment = TextAnchor.MiddleLeft)
         {
             var textObject = new GameObject(name);
