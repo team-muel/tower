@@ -66,6 +66,9 @@ namespace Tower.UI
         private BattleHudPresenter hudPresenter;
         private OrbitCameraRig orbitRig;
         private string focusedUnitId;
+        private Tower.Gen.FloorLayout currentLayout;
+        private GameObject dungeonMapOverlay;
+        private bool isDungeonMapOpen;
 
         private void Start()
         {
@@ -82,6 +85,11 @@ namespace Tower.UI
 
         private void Update()
         {
+            if (Input.GetKeyDown(KeyCode.Tab) || Input.GetKeyDown(KeyCode.M))
+            {
+                ToggleDungeonMap();
+            }
+
             if (engine == null || awaitingNextFloor)
             {
                 if (commandMode.SyncCombatActive(false))
@@ -269,6 +277,7 @@ namespace Tower.UI
             proceedButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Next Floor", BeginNextFloor));
             proceedButton.gameObject.SetActive(false);
             RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Main Menu", () => SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Boot)));
+            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Map", ToggleDungeonMap));
             resultText = RuntimeSceneUi.AddText(sidePanel, "Result", "", 15, TextAnchor.UpperLeft);
             logText = RuntimeSceneUi.AddText(sidePanel, "Log", "", 14, TextAnchor.UpperLeft);
             HideDoorButtons();
@@ -348,6 +357,7 @@ namespace Tower.UI
             state = gated.Value;
             var seed = BaseSeed + (state.StairwayIndex * 1000) + state.FloorIndex + UnityEngine.Random.Range(0, 997);
             var layout = FloorGenerator.Generate(new FloorGenParams(seed, state.FloorIndex == state.FloorCount));
+            currentLayout = layout;
             encounterRooms.Clear();
             encounterRooms.AddRange(layout.Rooms
                 .Where(room => room.Encounter.HasEncounter)
@@ -1452,6 +1462,143 @@ namespace Tower.UI
 
                 var definition = content.ResolveCharacter(characterId);
                 return CharacterState.Create(definition, slotCount: 2, assignedAbilities: definition.DefaultAbilities);
+            }
+        }
+
+        private void ToggleDungeonMap()
+        {
+            if (dungeonMapOverlay == null)
+            {
+                BuildDungeonMapOverlay();
+            }
+
+            isDungeonMapOpen = !isDungeonMapOpen;
+            dungeonMapOverlay.SetActive(isDungeonMapOpen);
+            if (isDungeonMapOpen)
+            {
+                RefreshDungeonMap();
+            }
+        }
+
+        private void BuildDungeonMapOverlay()
+        {
+            var canvasGo = GameObject.Find("Expedition Canvas");
+            if (canvasGo == null) return;
+
+            dungeonMapOverlay = RuntimeSceneUi.CreatePanel(
+                canvasGo.transform,
+                "Dungeon Map Overlay",
+                new Vector2(0.15f, 0.15f),
+                new Vector2(0.85f, 0.85f),
+                Vector2.zero,
+                Vector2.zero).gameObject;
+
+            var image = dungeonMapOverlay.GetComponent<UnityEngine.UI.Image>();
+            if (image != null)
+            {
+                image.color = new Color(0.05f, 0.05f, 0.05f, 0.95f);
+            }
+
+            var title = RuntimeSceneUi.AddText(dungeonMapOverlay.transform, "MapTitle", "던전 지도 (Tab/M을 눌러 닫기)", 22, TextAnchor.UpperCenter);
+            var titleRect = title.rectTransform;
+            titleRect.anchorMin = new Vector2(0f, 0.9f);
+            titleRect.anchorMax = new Vector2(1f, 1f);
+            titleRect.offsetMin = Vector2.zero;
+            titleRect.offsetMax = Vector2.zero;
+
+            var container = new GameObject("Map Container");
+            container.transform.SetParent(dungeonMapOverlay.transform, false);
+            var containerRect = container.AddComponent<RectTransform>();
+            containerRect.anchorMin = new Vector2(0.05f, 0.05f);
+            containerRect.anchorMax = new Vector2(0.95f, 0.85f);
+            containerRect.offsetMin = Vector2.zero;
+            containerRect.offsetMax = Vector2.zero;
+
+            dungeonMapOverlay.SetActive(false);
+        }
+
+        private void RefreshDungeonMap()
+        {
+            if (dungeonMapOverlay == null || currentLayout == null) return;
+
+            var container = dungeonMapOverlay.transform.Find("Map Container");
+            if (container == null) return;
+
+            foreach (Transform child in container)
+            {
+                Destroy(child.gameObject);
+            }
+
+            var rooms = currentLayout.Rooms;
+            if (rooms == null || rooms.Count == 0) return;
+
+            int maxDepth = 0;
+            foreach (var r in rooms)
+            {
+                if (r.Depth > maxDepth) maxDepth = r.Depth;
+            }
+            if (maxDepth == 0) maxDepth = 1;
+
+            var depthGroups = new Dictionary<int, List<Tower.Gen.FloorRoom>>();
+            foreach (var r in rooms)
+            {
+                if (!depthGroups.ContainsKey(r.Depth))
+                {
+                    depthGroups[r.Depth] = new List<Tower.Gen.FloorRoom>();
+                }
+                depthGroups[r.Depth].Add(r);
+            }
+
+            foreach (var r in rooms)
+            {
+                var siblings = depthGroups[r.Depth];
+                int sibIndex = siblings.IndexOf(r);
+                int sibCount = siblings.Count;
+
+                float x = (float)r.Depth / maxDepth;
+                float y = sibCount > 1 ? (float)sibIndex / (sibCount - 1) : 0.5f;
+
+                float normX = Mathf.Lerp(0.05f, 0.95f, x);
+                float normY = Mathf.Lerp(0.15f, 0.85f, y);
+
+                var nodePanel = RuntimeSceneUi.CreatePanel(
+                    container,
+                    $"RoomNode_{r.Id}",
+                    new Vector2(normX - 0.06f, normY - 0.08f),
+                    new Vector2(normX + 0.06f, normY + 0.08f),
+                    Vector2.zero,
+                    Vector2.zero);
+
+                var img = nodePanel.GetComponent<UnityEngine.UI.Image>();
+                if (img != null)
+                {
+                    bool isCurrent = false;
+                    if (encounterIndex >= 0 && encounterIndex < encounterRooms.Count)
+                    {
+                        isCurrent = encounterRooms[encounterIndex].Id == r.Id;
+                    }
+
+                    if (isCurrent)
+                    {
+                        img.color = new Color(0.1f, 0.5f, 0.1f, 0.9f);
+                    }
+                    else if (r.Id < (encounterIndex >= 0 && encounterIndex < encounterRooms.Count ? encounterRooms[encounterIndex].Id : 999))
+                    {
+                        img.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+                    }
+                    else
+                    {
+                        img.color = new Color(0.3f, 0.3f, 0.35f, 0.8f);
+                    }
+                }
+
+                string roomType = r.IsBossRoom ? "보스" : (r.IsEntrance ? "입구" : (r.IsExit ? "출구" : (r.Encounter.HasEncounter ? "조우" : "빈 방")));
+                string currentLabel = "";
+                if (encounterIndex >= 0 && encounterIndex < encounterRooms.Count && encounterRooms[encounterIndex].Id == r.Id)
+                {
+                    currentLabel = "<color=#FFEB3B>[현재]</color>\n";
+                }
+                RuntimeSceneUi.AddText(nodePanel, "Label", $"{currentLabel}방 {r.Id}\n({roomType})", 12, TextAnchor.MiddleCenter);
             }
         }
     }
