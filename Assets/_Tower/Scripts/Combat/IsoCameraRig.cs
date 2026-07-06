@@ -25,6 +25,7 @@ namespace Tower.Combat
         private Vector3 _pivot;
         private Vector3 _pivotTarget;
         private Vector3 _pivotVelocity;
+        private Transform _followTarget;
 
         public Camera Camera
         {
@@ -45,14 +46,25 @@ namespace Tower.Combat
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Q))
+            // Follow mode (camp): WASD/arrows and Q/E belong to the followed
+            // actor's own controller, so the rig only keeps scroll zoom live.
+            if (_followTarget == null)
             {
-                RotateCounterClockwise();
-            }
+                if (Input.GetKeyDown(KeyCode.Q))
+                {
+                    RotateCounterClockwise();
+                }
 
-            if (Input.GetKeyDown(KeyCode.E))
-            {
-                RotateClockwise();
+                if (Input.GetKeyDown(KeyCode.E))
+                {
+                    RotateClockwise();
+                }
+
+                Vector2 pan = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
+                if (pan.sqrMagnitude > 0f)
+                {
+                    Pan(pan.normalized * _panSpeed * Time.deltaTime);
+                }
             }
 
             if (Input.GetKeyDown(KeyCode.R))
@@ -71,16 +83,15 @@ namespace Tower.Combat
             {
                 SetDistance(_distance - (scroll * ScrollZoomStep));
             }
-
-            Vector2 pan = new Vector2(Input.GetAxisRaw("Horizontal"), Input.GetAxisRaw("Vertical"));
-            if (pan.sqrMagnitude > 0f)
-            {
-                Pan(pan.normalized * _panSpeed * Time.deltaTime);
-            }
         }
 
         private void LateUpdate()
         {
+            if (_followTarget != null)
+            {
+                _pivotTarget = _followTarget.position;
+            }
+
             // Follow damping: ease the rig pivot toward the focus target.
             if (_followDamping <= 0f)
             {
@@ -101,7 +112,12 @@ namespace Tower.Combat
                 return;
             }
 
-            _pivotTarget = gridView.CellToWorld(pos);
+            FocusWorld(gridView.CellToWorld(pos));
+        }
+
+        public void FocusWorld(Vector3 worldPosition)
+        {
+            _pivotTarget = worldPosition;
             if (!_hasFocused)
             {
                 // First focus snaps so scene start does not swoop in from origin.
@@ -111,6 +127,17 @@ namespace Tower.Combat
             }
 
             ApplyTransform();
+        }
+
+        // Continuous follow (camp hub): the rig tracks the target every frame
+        // with the usual damping. Pass null to return to manual focus/pan mode.
+        public void SetFollowTarget(Transform target)
+        {
+            _followTarget = target;
+            if (target != null)
+            {
+                FocusWorld(target.position);
+            }
         }
 
         public void Pan(Vector2 delta)

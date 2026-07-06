@@ -302,8 +302,8 @@ namespace Tower.UI
             // Let the loading state render at least one frame before the
             // (blocking) scene load kicks in.
             yield return null;
-            PlayerPrefs.SetInt(TowerSceneNames.NewExpeditionPref, 1);
-            PlayerPrefs.Save();
+            // T15: Boot decides new-vs-continue; keep the pref it set so the
+            // Continue path survives Camp -> Loadout -> Expedition.
             SceneManager.LoadScene(TowerSceneNames.Expedition);
         }
 
@@ -314,7 +314,7 @@ namespace Tower.UI
                 return;
             }
 
-            SceneManager.LoadScene(TowerSceneNames.Boot);
+            SceneManager.LoadScene(TowerSceneNames.Camp);
         }
 
         private static void SetButtonLabel(Button button, string label)

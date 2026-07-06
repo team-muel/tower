@@ -130,7 +130,7 @@ GameObject:
   - component: {fileID: 873977832}
   - component: {fileID: 873977831}
   m_Layer: 0
-  m_Name: Boot Menu
+  m_Name: Camp Hub
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -145,9 +145,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 873977830}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: af1d0f2bbe16886438d99f8dd4f7e9cc, type: 3}
+  m_Script: {fileID: 11500000, guid: ba4017184a6888544af53523830e1966, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Tower.UI::Tower.UI.BootMenuController
+  m_EditorClassIdentifier: Tower.UI::Tower.UI.CampController
 --- !u!4 &873977832
 Transform:
   m_ObjectHideFlags: 0

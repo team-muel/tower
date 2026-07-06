@@ -84,14 +84,16 @@ namespace Tower.UI
             repository?.Delete();
             PlayerPrefs.SetInt(TowerSceneNames.NewExpeditionPref, 1);
             PlayerPrefs.Save();
-            SceneManager.LoadScene(TowerSceneNames.Loadout);
+            SceneManager.LoadScene(TowerSceneNames.Camp);
         }
 
         private void ContinueExpedition()
         {
+            // T15: Continue also routes through the camp hub; the checkpoint
+            // save is picked up when the expedition scene finally loads.
             PlayerPrefs.SetInt(TowerSceneNames.NewExpeditionPref, 0);
             PlayerPrefs.Save();
-            SceneManager.LoadScene(TowerSceneNames.Expedition);
+            SceneManager.LoadScene(TowerSceneNames.Camp);
         }
 
         private static SaveRepository CreateRepository()

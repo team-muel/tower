@@ -18,6 +18,8 @@ namespace Tower.Core
             WriteCombat(builder, snapshot.combat);
             builder.Append(",\"expedition\":");
             WriteExpedition(builder, snapshot.expedition);
+            builder.Append(",\"camp\":");
+            WriteCamp(builder, snapshot.camp);
             builder.Append('}');
             return builder.ToString();
         }
@@ -88,6 +90,21 @@ namespace Tower.Core
             builder.Append(",\"roomCount\":").Append(expedition.roomCount.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"retreatCount\":").Append(expedition.retreatCount.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"isComplete\":").Append(expedition.isComplete ? "true" : "false");
+            builder.Append('}');
+        }
+
+        private static void WriteCamp(StringBuilder builder, QaCampSnapshot camp)
+        {
+            if (camp == null)
+            {
+                builder.Append("null");
+                return;
+            }
+
+            builder.Append("{\"x\":").Append(camp.x.ToString("0.##", CultureInfo.InvariantCulture));
+            builder.Append(",\"z\":").Append(camp.z.ToString("0.##", CultureInfo.InvariantCulture));
+            builder.Append(",\"zoneId\":");
+            WriteString(builder, camp.zoneId);
             builder.Append('}');
         }
 

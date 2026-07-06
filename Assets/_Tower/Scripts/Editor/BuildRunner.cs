@@ -13,6 +13,7 @@ namespace Tower.EditorTools
         private static readonly string[] Scenes =
         {
             "Assets/_Tower/Scenes/Boot.unity",
+            "Assets/_Tower/Scenes/Camp.unity",
             "Assets/_Tower/Scenes/Loadout.unity",
             "Assets/_Tower/Scenes/Expedition.unity"
         };
