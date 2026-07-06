@@ -22,6 +22,7 @@ namespace Tower.UI
         private readonly List<FloorRoom> encounterRooms = new List<FloorRoom>();
         private readonly List<string> logLines = new List<string>();
         private readonly List<string> qaButtonNames = new List<string>();
+        private readonly List<Button> doorButtons = new List<Button>();
 
         private TowerSliceContent content;
         private SaveRepository repository;
@@ -36,7 +37,11 @@ namespace Tower.UI
         private StatusBoard statusBoard;
         private Camera sceneCamera;
         private Text statusText;
+        private Text explorationText;
         private Text turnText;
+        private Text initiativeText;
+        private Text unitText;
+        private Text resultText;
         private Text logText;
         private Button moveButton;
         private Button proceedButton;
@@ -45,6 +50,9 @@ namespace Tower.UI
         private int encounterIndex;
         private bool awaitingNextFloor;
         private float nextAiStepTime;
+        private string currentPhase = "booting";
+        private string nextRoomPreview = string.Empty;
+        private string lastOutcome = string.Empty;
 
         private void Start()
         {
@@ -133,7 +141,10 @@ namespace Tower.UI
                     roomIndex = encounterIndex,
                     roomCount = encounterRooms.Count,
                     retreatCount = state.RetreatCount,
-                    isComplete = state.IsComplete
+                    isComplete = state.IsComplete,
+                    phase = currentPhase,
+                    nextRoomPreview = nextRoomPreview,
+                    lastOutcome = lastOutcome
                 };
             }
 
@@ -145,7 +156,8 @@ namespace Tower.UI
             var combat = new QaCombatSnapshot
             {
                 round = engine.RoundNumber,
-                activeUnitId = engine.CurrentTurn == null ? string.Empty : engine.CurrentTurn.UnitId
+                activeUnitId = engine.CurrentTurn == null ? string.Empty : engine.CurrentTurn.UnitId,
+                remainingOrders = orderBoard == null ? 0 : orderBoard.RemainingOrders()
             };
             combat.initiativeOrder.AddRange(engine.CurrentRoundOrder);
             foreach (var unitId in tokens.Keys.OrderBy(id => id, StringComparer.Ordinal))
@@ -192,7 +204,10 @@ namespace Tower.UI
                 new Vector2(-12f, -12f));
 
             statusText = RuntimeSceneUi.AddText(sidePanel, "Status", "", 18, TextAnchor.UpperLeft);
+            explorationText = RuntimeSceneUi.AddText(sidePanel, "Exploration", "", 16, TextAnchor.UpperLeft);
             turnText = RuntimeSceneUi.AddText(sidePanel, "Turn", "", 16, TextAnchor.UpperLeft);
+            initiativeText = RuntimeSceneUi.AddText(sidePanel, "Initiative", "", 14, TextAnchor.UpperLeft);
+            unitText = RuntimeSceneUi.AddText(sidePanel, "Units", "", 14, TextAnchor.UpperLeft);
             moveButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Move", () => playerController?.EnterMoveMode()));
 
             for (var index = 0; index < 2; index++)
@@ -204,10 +219,15 @@ namespace Tower.UI
             RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Order: Focus Nearest", IssueFocusOrder));
             RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Skip Turn", () => playerController?.Skip()));
             RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Retreat", Retreat));
+            AddDoorButton(sidePanel, "North Door");
+            AddDoorButton(sidePanel, "East Door");
+            AddDoorButton(sidePanel, "West Door");
             proceedButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Next Floor", BeginNextFloor));
             proceedButton.gameObject.SetActive(false);
             RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Main Menu", () => SceneManager.LoadScene(TowerSceneNames.Boot)));
+            resultText = RuntimeSceneUi.AddText(sidePanel, "Result", "", 15, TextAnchor.UpperLeft);
             logText = RuntimeSceneUi.AddText(sidePanel, "Log", "", 14, TextAnchor.UpperLeft);
+            HideDoorButtons();
         }
 
         private void OpenRepository()
@@ -292,10 +312,10 @@ namespace Tower.UI
             encounterIndex = 0;
 
             AddLog($"Entered stairway {state.StairwayIndex}, floor {state.FloorIndex}. Rooms: {layout.Rooms.Count}, encounters: {encounterRooms.Count}.");
-            StartNextEncounterOrClearFloor();
+            ShowDoorChoiceOrClearFloor();
         }
 
-        private void StartNextEncounterOrClearFloor()
+        private void ShowDoorChoiceOrClearFloor()
         {
             if (encounterIndex >= encounterRooms.Count)
             {
@@ -303,12 +323,36 @@ namespace Tower.UI
                 return;
             }
 
-            var room = encounterRooms[encounterIndex++];
-            StartEncounter(room);
+            currentPhase = "exploration";
+            awaitingNextFloor = true;
+            var room = encounterRooms[encounterIndex];
+            nextRoomPreview = BuildRoomPreview(room);
+            if (explorationText != null)
+            {
+                explorationText.text = $"탐험 | {state.StairwayIndex}층계 · {state.FloorIndex}층 · 방 {encounterIndex + 1}/{encounterRooms.Count}\n"
+                    + $"다음 방: {nextRoomPreview}\n문을 골라 다음 방으로 이동";
+            }
+
+            if (resultText != null)
+            {
+                resultText.text = string.Empty;
+            }
+
+            RefreshCombatHud();
+            ShowDoorButtons();
         }
 
         private void StartEncounter(FloorRoom room)
         {
+            currentPhase = "combat";
+            awaitingNextFloor = false;
+            nextRoomPreview = BuildRoomPreview(room);
+            HideDoorButtons();
+            if (resultText != null)
+            {
+                resultText.text = string.Empty;
+            }
+
             ClearBattleObjects();
             var map = room.Map;
             var party = state.Roster.Where(member => !member.IsDead).ToList();
@@ -412,6 +456,7 @@ namespace Tower.UI
             CreateCamera(room.Map.Width, room.Map.Height);
             RefreshAbilityButtons(abilities);
             RefreshStatus();
+            RefreshCombatHud();
             AddLog($"Encounter {room.Id} started. Use buttons or keys: M, 1, 2, Space.");
         }
 
@@ -435,6 +480,7 @@ namespace Tower.UI
 
             SyncTokensToMap();
             RefreshStatus();
+            RefreshCombatHud();
         }
 
         private void HandlePlayerInput()
@@ -472,6 +518,7 @@ namespace Tower.UI
                     playerController.OnCellClicked(hover);
                     SyncTokensToMap();
                     RefreshStatus();
+                    RefreshCombatHud();
                 }
             }
             else
@@ -491,7 +538,7 @@ namespace Tower.UI
 
             if (winner == CombatTeam.Player)
             {
-                StartNextEncounterOrClearFloor();
+                ShowDoorChoiceOrClearFloor();
             }
             else
             {
@@ -516,7 +563,9 @@ namespace Tower.UI
             }
 
             awaitingNextFloor = true;
+            currentPhase = "floor-result";
             AddLog("Floor cleared. Press Next Floor to continue.");
+            ShowResult(progress.Value);
             ShowProceedButton("Next Floor", BeginNextFloor);
             RefreshStatus();
         }
@@ -534,9 +583,13 @@ namespace Tower.UI
             ApplyProgress(progress.Value);
             ClearBattleObjects();
             awaitingNextFloor = true;
+            currentPhase = progress.Value.Outcome == ExpeditionOutcome.GreatRegression
+                ? "great-regression-result"
+                : "retreat-result";
             AddLog(progress.Value.Outcome == ExpeditionOutcome.GreatRegression
                 ? "Great regression: back to floor 1."
                 : "Retreated to the last checkpoint.");
+            ShowResult(progress.Value);
             ShowProceedButton("Return to Menu", () => SceneManager.LoadScene(TowerSceneNames.Boot));
             RefreshStatus();
         }
@@ -550,6 +603,7 @@ namespace Tower.UI
             }
 
             var message = progress.Outcome.ToString();
+            lastOutcome = progress.Outcome.ToString();
             if (progress.ConfirmedDeadIds.Count > 0)
             {
                 message += " | fallen: " + string.Join(", ", progress.ConfirmedDeadIds);
@@ -667,6 +721,8 @@ namespace Tower.UI
                 var index = abilityButtons.IndexOf(button);
                 button.interactable = isPlayerTurn && index < currentAbilityCount;
             }
+
+            RefreshCombatHud();
         }
 
         private void RefreshStatus()
@@ -679,6 +735,58 @@ namespace Tower.UI
             statusText.text = $"Stairway {state.StairwayIndex}/{state.StairwayCount} | Floor {state.FloorIndex}/{state.FloorCount}\n"
                 + $"Retreats {state.RetreatCount}/3 | Roster {state.Roster.Count}\n"
                 + string.Join("\n", state.Roster.Select(member => $"{member.UnitId}: {member.State.CurrentHp}/{member.State.Definition.MaxHp} HP, deaths {member.State.DeathCount}"));
+        }
+
+        private void RefreshCombatHud()
+        {
+            if (engine == null)
+            {
+                if (turnText != null)
+                {
+                    turnText.text = currentPhase == "exploration" ? "전투 대기" : string.Empty;
+                }
+
+                if (initiativeText != null)
+                {
+                    initiativeText.text = string.Empty;
+                }
+
+                if (unitText != null)
+                {
+                    unitText.text = string.Empty;
+                }
+
+                return;
+            }
+
+            if (initiativeText != null)
+            {
+                initiativeText.text = "이니셔티브: " + string.Join(" -> ", engine.CurrentRoundOrder);
+            }
+
+            if (unitText != null)
+            {
+                var lines = new List<string> { $"오더 잔여 {orderBoard?.RemainingOrders() ?? 0}/{OrderBoard.DefaultCombatOrders}" };
+                foreach (var unitId in tokens.Keys.OrderBy(id => id, StringComparer.Ordinal))
+                {
+                    var combatant = engine.GetCombatant(unitId);
+                    if (combatant == null)
+                    {
+                        continue;
+                    }
+
+                    var marks = statusBoard == null
+                        ? Array.Empty<string>()
+                        : statusBoard.GetActiveMarkIds(unitId, engine.RoundNumber);
+                    var markText = marks.Count == 0 ? "-" : string.Join(",", marks);
+                    var activePrefix = engine.CurrentTurn != null && StringComparer.Ordinal.Equals(engine.CurrentTurn.UnitId, unitId)
+                        ? "> "
+                        : "  ";
+                    lines.Add($"{activePrefix}{unitId} {combatant.State.CurrentHp}/{combatant.State.Definition.MaxHp} HP | mark {markText}");
+                }
+
+                unitText.text = string.Join("\n", lines);
+            }
         }
 
         private void AddLog(string message)
@@ -706,9 +814,124 @@ namespace Tower.UI
         {
             ClearBattleObjects();
             awaitingNextFloor = true;
+            currentPhase = "advance-result";
+            nextRoomPreview = string.Empty;
             RefreshStatus();
             AddLog("Stairway conquered. Shortcut saved.");
+            if (resultText != null)
+            {
+                resultText.text = "전진 결과\n층계 정복. 숏컷이 저장됐다.\n사망 상태 동료는 전진 기록에 확정된다.";
+            }
+
             ShowProceedButton("Return to Menu", () => SceneManager.LoadScene(TowerSceneNames.Boot));
+        }
+
+        private void AddDoorButton(Transform parent, string label)
+        {
+            var button = RegisterQaButton(RuntimeSceneUi.AddButton(parent, label, () => EnterSelectedDoor()));
+            doorButtons.Add(button);
+        }
+
+        private void ShowDoorButtons()
+        {
+            foreach (var button in doorButtons)
+            {
+                if (button == null)
+                {
+                    continue;
+                }
+
+                button.gameObject.SetActive(true);
+                var text = button.GetComponentInChildren<Text>();
+                if (text != null)
+                {
+                    var baseLabel = button.gameObject.name.Replace(" Button", string.Empty);
+                    text.text = baseLabel + " (" + nextRoomPreview + ")";
+                }
+            }
+        }
+
+        private void HideDoorButtons()
+        {
+            foreach (var button in doorButtons)
+            {
+                if (button != null)
+                {
+                    button.gameObject.SetActive(false);
+                }
+            }
+        }
+
+        private void EnterSelectedDoor()
+        {
+            if (encounterIndex >= encounterRooms.Count)
+            {
+                ClearFloor();
+                return;
+            }
+
+            var room = encounterRooms[encounterIndex++];
+            StartEncounter(room);
+        }
+
+        private string BuildRoomPreview(FloorRoom room)
+        {
+            if (room == null)
+            {
+                return "출구";
+            }
+
+            if (room.Encounter.IsBoss)
+            {
+                return "보스";
+            }
+
+            if (room.Encounter.EnemyCount <= 0)
+            {
+                return "캠프";
+            }
+
+            return room.Encounter.EnemyCount >= 3 ? "강적" : "조우";
+        }
+
+        private void ShowResult(ExpeditionProgress progress)
+        {
+            if (resultText == null || progress == null)
+            {
+                return;
+            }
+
+            var lines = new List<string>();
+            switch (progress.Outcome)
+            {
+                case ExpeditionOutcome.Advanced:
+                    lines.Add("전진 결과");
+                    lines.Add("층계 정복. 체크포인트와 숏컷 저장.");
+                    break;
+                case ExpeditionOutcome.Retreated:
+                    lines.Add("후퇴 결과");
+                    lines.Add("직전 정복 시점으로 돌아간다.");
+                    break;
+                case ExpeditionOutcome.GreatRegression:
+                    lines.Add("대회귀 결과");
+                    lines.Add("1층계로 돌아가지만 숏컷과 실종 기록은 유지.");
+                    break;
+                default:
+                    lines.Add("층 정리");
+                    lines.Add("다음 층으로 이동 가능.");
+                    break;
+            }
+
+            lines.Add(progress.RevivedIds.Count == 0
+                ? "생환자: 없음"
+                : "생환자: " + string.Join(", ", progress.RevivedIds));
+            lines.Add(progress.ConfirmedDeadIds.Count == 0
+                ? "확정 사망: 없음"
+                : "확정 사망: " + string.Join(", ", progress.ConfirmedDeadIds));
+            lines.Add(progress.NewlyMissingIds.Count == 0
+                ? "실종: 없음"
+                : "실종: " + string.Join(", ", progress.NewlyMissingIds));
+            resultText.text = string.Join("\n", lines);
         }
 
         private void ShowProceedButton(string label, Action action)

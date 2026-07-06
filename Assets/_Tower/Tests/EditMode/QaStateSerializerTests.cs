@@ -26,6 +26,7 @@ namespace Tower.Tests.EditMode
                 {
                     round = 2,
                     activeUnitId = "regressor",
+                    remainingOrders = 1,
                     initiativeOrder = new List<string> { "regressor", "enemy-1-0" },
                     units = new List<QaUnitSnapshot>
                     {
@@ -61,7 +62,10 @@ namespace Tower.Tests.EditMode
                     roomIndex = 1,
                     roomCount = 4,
                     retreatCount = 1,
-                    isComplete = false
+                    isComplete = false,
+                    phase = "combat",
+                    nextRoomPreview = "강적",
+                    lastOutcome = "Retreated"
                 }
             };
 
@@ -69,14 +73,15 @@ namespace Tower.Tests.EditMode
 
             const string expected =
                 "{\"sceneName\":\"Expedition\","
-                + "\"combat\":{\"round\":2,\"activeUnitId\":\"regressor\","
+                + "\"combat\":{\"round\":2,\"activeUnitId\":\"regressor\",\"remainingOrders\":1,"
                 + "\"initiativeOrder\":[\"regressor\",\"enemy-1-0\"],"
                 + "\"units\":["
                 + "{\"unitId\":\"regressor\",\"team\":\"Player\",\"currentHp\":18,\"maxHp\":24,\"alive\":true,\"x\":1,\"y\":2,\"marks\":[\"burn\"]},"
                 + "{\"unitId\":\"enemy-1-0\",\"team\":\"Enemy\",\"currentHp\":0,\"maxHp\":10,\"alive\":false,\"x\":-1,\"y\":-1,\"marks\":[]}"
                 + "]},"
                 + "\"expedition\":{\"stairwayIndex\":1,\"stairwayCount\":1,\"floorIndex\":2,\"floorCount\":3,"
-                + "\"roomIndex\":1,\"roomCount\":4,\"retreatCount\":1,\"isComplete\":false},"
+                + "\"roomIndex\":1,\"roomCount\":4,\"retreatCount\":1,\"isComplete\":false,"
+                + "\"phase\":\"combat\",\"nextRoomPreview\":\"강적\",\"lastOutcome\":\"Retreated\"},"
                 + "\"camp\":null}";
             Assert.That(json, Is.EqualTo(expected));
         }
