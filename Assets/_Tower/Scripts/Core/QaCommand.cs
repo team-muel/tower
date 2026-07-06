@@ -5,7 +5,8 @@ namespace Tower.Core
         Press,
         State,
         Scene,
-        Quit
+        Quit,
+        Dump
     }
 
     // Parsed QA harness command. Argument is empty for state/quit.

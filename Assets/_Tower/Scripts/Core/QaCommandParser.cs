@@ -34,6 +34,11 @@ namespace Tower.Core
                 return WithoutArgument(QaCommandKind.State, argument, "state takes no argument.");
             }
 
+            if (IsVerb(verb, "dump"))
+            {
+                return WithoutArgument(QaCommandKind.Dump, argument, "dump takes no argument.");
+            }
+
             if (IsVerb(verb, "quit"))
             {
                 return WithoutArgument(QaCommandKind.Quit, argument, "quit takes no argument.");
