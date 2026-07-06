@@ -27,6 +27,7 @@ namespace Tower.Tests.EditMode
                     round = 2,
                     activeUnitId = "regressor",
                     remainingOrders = 1,
+                    commandMode = true,
                     initiativeOrder = new List<string> { "regressor", "enemy-1-0" },
                     units = new List<QaUnitSnapshot>
                     {
@@ -39,7 +40,8 @@ namespace Tower.Tests.EditMode
                             alive = true,
                             x = 1,
                             y = 2,
-                            marks = new List<string> { "burn" }
+                            marks = new List<string> { "burn" },
+                            pendingAbility = "strike"
                         },
                         new QaUnitSnapshot
                         {
@@ -73,17 +75,32 @@ namespace Tower.Tests.EditMode
 
             const string expected =
                 "{\"sceneName\":\"Expedition\","
-                + "\"combat\":{\"round\":2,\"activeUnitId\":\"regressor\",\"remainingOrders\":1,"
+                + "\"combat\":{\"round\":2,\"activeUnitId\":\"regressor\",\"remainingOrders\":1,\"commandMode\":true,"
                 + "\"initiativeOrder\":[\"regressor\",\"enemy-1-0\"],"
                 + "\"units\":["
-                + "{\"unitId\":\"regressor\",\"team\":\"Player\",\"currentHp\":18,\"maxHp\":24,\"alive\":true,\"x\":1,\"y\":2,\"marks\":[\"burn\"]},"
-                + "{\"unitId\":\"enemy-1-0\",\"team\":\"Enemy\",\"currentHp\":0,\"maxHp\":10,\"alive\":false,\"x\":-1,\"y\":-1,\"marks\":[]}"
+                + "{\"unitId\":\"regressor\",\"team\":\"Player\",\"currentHp\":18,\"maxHp\":24,\"alive\":true,\"x\":1,\"y\":2,\"marks\":[\"burn\"],\"pendingAbility\":\"strike\"},"
+                + "{\"unitId\":\"enemy-1-0\",\"team\":\"Enemy\",\"currentHp\":0,\"maxHp\":10,\"alive\":false,\"x\":-1,\"y\":-1,\"marks\":[],\"pendingAbility\":\"\"}"
                 + "]},"
                 + "\"expedition\":{\"stairwayIndex\":1,\"stairwayCount\":1,\"floorIndex\":2,\"floorCount\":3,"
                 + "\"roomIndex\":1,\"roomCount\":4,\"retreatCount\":1,\"isComplete\":false,"
                 + "\"phase\":\"combat\",\"nextRoomPreview\":\"강적\",\"lastOutcome\":\"Retreated\"},"
                 + "\"camp\":null}";
             Assert.That(json, Is.EqualTo(expected));
+        }
+
+        // T19: command mode defaults off and pending ability defaults empty.
+        [Test]
+        public void ToJson_DefaultCombatSnapshot_WritesCommandModeFalse()
+        {
+            var snapshot = new QaStateSnapshot
+            {
+                sceneName = "Expedition",
+                combat = new QaCombatSnapshot { round = 1 }
+            };
+
+            var json = QaStateSerializer.ToJson(snapshot);
+
+            Assert.That(json, Does.Contain("\"commandMode\":false"));
         }
 
         [Test]

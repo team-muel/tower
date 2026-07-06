@@ -14,6 +14,12 @@ namespace Tower.Combat
             this.logSink = logSink;
         }
 
+        // T19: presenter-local playback factor for bullet-time command mode.
+        // 1 = normal cadence, smaller = slower presentation. Consumers (AI
+        // step pacing, token animation) divide their delays by this factor;
+        // global Time.timeScale is never touched.
+        public float PlaybackFactor { get; set; } = 1f;
+
         // Mode line for the player-turn HUD (v0: routed to the same log sink).
         public void SetMode(string mode)
         {

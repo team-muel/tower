@@ -17,6 +17,8 @@ namespace Tower.Core
         public int round;
         public string activeUnitId = string.Empty;
         public int remainingOrders;
+        // T19: bullet-time command mode overlay toggle state.
+        public bool commandMode;
         public List<string> initiativeOrder = new List<string>();
         public List<QaUnitSnapshot> units = new List<QaUnitSnapshot>();
     }
@@ -31,6 +33,9 @@ namespace Tower.Core
         public int x;
         public int y;
         public List<string> marks = new List<string>();
+        // T19: the engine's pending ability when this unit holds the active
+        // turn; empty otherwise (the engine tracks one pending pick at a time).
+        public string pendingAbility = string.Empty;
     }
 
     public sealed class QaExpeditionSnapshot

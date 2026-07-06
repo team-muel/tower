@@ -17,6 +17,8 @@ namespace Tower.UI
         private const string ReturnerId = "regressor";
         private const int BaseSeed = 20260706;
         private const string QaStateKey = "expedition";
+        private const string CommandModeButtonName = "Command Mode";
+        private const float AiStepSeconds = 0.25f;
 
         private readonly Dictionary<string, UnitToken> tokens = new Dictionary<string, UnitToken>(StringComparer.Ordinal);
         private readonly List<FloorRoom> encounterRooms = new List<FloorRoom>();
@@ -53,6 +55,11 @@ namespace Tower.UI
         private string currentPhase = "booting";
         private string nextRoomPreview = string.Empty;
         private string lastOutcome = string.Empty;
+        private readonly CommandModeState commandMode = new CommandModeState();
+        private CommandModeOverlay commandOverlay;
+        private BattleHudPresenter hudPresenter;
+        private OrbitCameraRig orbitRig;
+        private string focusedUnitId;
 
         private void Start()
         {
@@ -63,12 +70,19 @@ namespace Tower.UI
             OpenRepository();
             OpenExpedition();
             QaRuntime.RegisterStateContributor(QaStateKey, FillQaState);
+            qaButtonNames.Add(CommandModeButtonName);
+            QaRuntime.RegisterButton(CommandModeButtonName, ToggleCommandMode);
         }
 
         private void Update()
         {
             if (engine == null || awaitingNextFloor)
             {
+                if (commandMode.SyncCombatActive(false))
+                {
+                    OnCommandModeChanged();
+                }
+
                 return;
             }
 
@@ -78,6 +92,12 @@ namespace Tower.UI
                 return;
             }
 
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                ToggleCommandMode();
+            }
+
+            UpdateCombatFocus();
             RefreshTurnUi();
             if (engine.CurrentTurn == null)
             {
@@ -89,7 +109,7 @@ namespace Tower.UI
                 if (Time.time >= nextAiStepTime)
                 {
                     RunAiTurn();
-                    nextAiStepTime = Time.time + 0.25f;
+                    nextAiStepTime = Time.time + (AiStepSeconds / (hudPresenter != null ? hudPresenter.PlaybackFactor : 1f));
                 }
 
                 return;
@@ -157,7 +177,8 @@ namespace Tower.UI
             {
                 round = engine.RoundNumber,
                 activeUnitId = engine.CurrentTurn == null ? string.Empty : engine.CurrentTurn.UnitId,
-                remainingOrders = orderBoard == null ? 0 : orderBoard.RemainingOrders()
+                remainingOrders = orderBoard == null ? 0 : orderBoard.RemainingOrders(),
+                commandMode = commandMode.IsActive
             };
             combat.initiativeOrder.AddRange(engine.CurrentRoundOrder);
             foreach (var unitId in tokens.Keys.OrderBy(id => id, StringComparer.Ordinal))
@@ -174,7 +195,10 @@ namespace Tower.UI
                     team = combatant.Team.ToString(),
                     currentHp = combatant.State.CurrentHp,
                     maxHp = combatant.State.Definition.MaxHp,
-                    alive = engine.IsAlive(unitId)
+                    alive = engine.IsAlive(unitId),
+                    pendingAbility = engine.CurrentTurn != null && StringComparer.Ordinal.Equals(engine.CurrentTurn.UnitId, unitId)
+                        ? engine.PendingAbilityId ?? string.Empty
+                        : string.Empty
                 };
 
                 var position = gridView != null && gridView.Map != null ? gridView.Map.FindOccupant(unitId) : null;
@@ -422,6 +446,7 @@ namespace Tower.UI
             }
 
             var presenter = new BattleHudPresenter(AddLog);
+            hudPresenter = presenter;
             var engineResult = TurnEngine.Create(combatants, presenter, resolver.Value);
             if (engineResult.IsFailure)
             {
@@ -454,10 +479,11 @@ namespace Tower.UI
             playerController = new PlayerTurnController(engine, gridView, highlighter, playerToken, enemyTokens, orderBoard, ReturnerId, abilities, presenter);
 
             CreateCamera(room.Map.Width, room.Map.Height);
+            CreateCommandOverlay(party);
             RefreshAbilityButtons(abilities);
             RefreshStatus();
             RefreshCombatHud();
-            AddLog($"Encounter {room.Id} started. Use buttons or keys: M, 1, 2, Space.");
+            AddLog($"Encounter {room.Id} started. Keys: M, 1, 2 · Space 지휘 모드.");
         }
 
         private void RunAiTurn()
@@ -490,6 +516,12 @@ namespace Tower.UI
                 return;
             }
 
+            if (commandMode.IsActive)
+            {
+                // 지휘 모드: 셀 클릭/모드 키 대신 오버레이 버튼이 입력을 받는다.
+                return;
+            }
+
             if (Input.GetKeyDown(KeyCode.M))
             {
                 playerController.EnterMoveMode();
@@ -503,11 +535,6 @@ namespace Tower.UI
             if (Input.GetKeyDown(KeyCode.Alpha2))
             {
                 playerController.EnterAbilityMode(1);
-            }
-
-            if (Input.GetKeyDown(KeyCode.Space))
-            {
-                playerController.Skip();
             }
 
             if (TryGetMouseCell(out var hover) && gridView.Map.InBounds(hover))
@@ -529,6 +556,7 @@ namespace Tower.UI
 
         private void ResolveEncounter()
         {
+            TearDownCommandMode();
             var winner = engine.WinningTeam;
             SyncPartyState();
             AddLog(winner == CombatTeam.Player ? "Encounter cleared." : "Party wiped.");
@@ -954,6 +982,7 @@ namespace Tower.UI
 
         private void ClearBattleObjects()
         {
+            TearDownCommandMode();
             foreach (var token in tokens.Values)
             {
                 if (token != null)
@@ -974,20 +1003,121 @@ namespace Tower.UI
             engine = null;
             aiDriver = null;
             playerController = null;
+            hudPresenter = null;
         }
 
+        // T19: combat runs on the orbit rig; camp/exploration scenes keep the
+        // iso follow rig (the rigs coexist, one per scene mode).
         private void CreateCamera(int width, int height)
         {
-            var existing = FindFirstObjectByType<IsoCameraRig>();
-            if (existing != null)
+            var existingIso = FindFirstObjectByType<IsoCameraRig>();
+            if (existingIso != null)
             {
-                Destroy(existing.gameObject);
+                Destroy(existingIso.gameObject);
             }
 
-            var cameraRigObject = new GameObject("Iso Camera Rig");
-            var cameraRig = cameraRigObject.AddComponent<IsoCameraRig>();
-            cameraRig.Focus(gridView, new GridPos(width / 2, height / 2));
-            sceneCamera = cameraRig.Camera;
+            var existingOrbit = FindFirstObjectByType<OrbitCameraRig>();
+            if (existingOrbit != null)
+            {
+                Destroy(existingOrbit.gameObject);
+            }
+
+            var cameraRigObject = new GameObject("Orbit Camera Rig");
+            orbitRig = cameraRigObject.AddComponent<OrbitCameraRig>();
+            orbitRig.FocusWorld(gridView.CellToWorld(new GridPos(width / 2, height / 2)));
+            sceneCamera = orbitRig.Camera;
+            focusedUnitId = null;
+        }
+
+        private void CreateCommandOverlay(List<ExpeditionMember> party)
+        {
+            var allyTokens = new List<UnitToken>();
+            foreach (var member in party)
+            {
+                if (tokens.TryGetValue(member.UnitId, out var token))
+                {
+                    allyTokens.Add(token);
+                }
+            }
+
+            commandOverlay = CommandModeOverlay.Create(engine, sceneCamera, allyTokens, AddLog);
+        }
+
+        // T19: the orbit camera follows the active turn unit; when there is
+        // none (or it is gone) it falls back to the regressor.
+        private void UpdateCombatFocus()
+        {
+            if (orbitRig == null || engine == null)
+            {
+                return;
+            }
+
+            var targetId = engine.CurrentTurn?.UnitId;
+            if (string.IsNullOrEmpty(targetId) || !tokens.ContainsKey(targetId) || !engine.IsAlive(targetId))
+            {
+                targetId = tokens.ContainsKey(ReturnerId) && engine.IsAlive(ReturnerId) ? ReturnerId : null;
+            }
+
+            if (StringComparer.Ordinal.Equals(targetId, focusedUnitId))
+            {
+                return;
+            }
+
+            focusedUnitId = targetId;
+            if (targetId != null)
+            {
+                orbitRig.SetFocusTarget(tokens[targetId].transform);
+            }
+        }
+
+        private void ToggleCommandMode()
+        {
+            var combatActive = engine != null && !engine.IsCombatEnded;
+            var toggled = commandMode.Toggle(combatActive);
+            if (toggled.IsFailure)
+            {
+                AddLog("지휘 모드: " + toggled.Error);
+                return;
+            }
+
+            OnCommandModeChanged();
+        }
+
+        private void OnCommandModeChanged()
+        {
+            if (hudPresenter != null)
+            {
+                hudPresenter.PlaybackFactor = commandMode.PlaybackFactor;
+            }
+
+            if (commandOverlay != null)
+            {
+                if (commandMode.IsActive)
+                {
+                    commandOverlay.Show();
+                }
+                else
+                {
+                    commandOverlay.Hide();
+                }
+            }
+
+            AddLog(commandMode.IsActive ? "지휘 중 — Space로 해제" : "지휘 모드 해제");
+        }
+
+        private void TearDownCommandMode()
+        {
+            commandMode.SyncCombatActive(false);
+            if (hudPresenter != null)
+            {
+                hudPresenter.PlaybackFactor = 1f;
+            }
+
+            if (commandOverlay != null)
+            {
+                Destroy(commandOverlay.gameObject);
+                commandOverlay = null;
+            }
         }
 
         private void CreateLighting()
