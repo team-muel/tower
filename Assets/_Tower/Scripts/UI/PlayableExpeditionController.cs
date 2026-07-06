@@ -48,6 +48,7 @@ namespace Tower.UI
 
         private void Start()
         {
+            RuntimeSceneUi.EnsureClearCamera();
             content = TowerSliceContent.Create();
             BuildUi();
             CreateLighting();

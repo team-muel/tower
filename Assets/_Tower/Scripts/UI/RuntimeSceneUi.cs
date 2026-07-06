@@ -109,6 +109,7 @@ namespace Tower.UI
             camera.backgroundColor = new Color(0.13f, 0.12f, 0.13f, 1f);
             camera.cullingMask = 0;
             camera.orthographic = true;
+            camera.depth = -100f; // clear-only; real cameras (depth 0+) render over it
         }
         private static void EnsureEventSystem()
         {
