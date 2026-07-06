@@ -241,7 +241,13 @@ namespace Tower.Combat
             }
 
             var ability = abilities[selectedAbilitySlot.Value];
-            var command = new UseAbilityCommand(playerId, ability.Id, targetCell: cell);
+            var targetUnitId = ability.TargetType == AbilityTargetType.Cell
+                ? null
+                : gridView.Map.GetOccupant(cell);
+            var targetCell = ability.TargetType == AbilityTargetType.Cell
+                ? (GridPos?)cell
+                : null;
+            var command = new UseAbilityCommand(playerId, ability.Id, targetUnitId, targetCell);
             var result = engine.Submit(command);
             if (result.IsSuccess)
             {

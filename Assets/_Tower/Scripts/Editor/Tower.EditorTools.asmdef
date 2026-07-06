@@ -2,7 +2,8 @@
   "name": "Tower.EditorTools",
   "rootNamespace": "Tower.EditorTools",
   "references": [
-    "Tower.Core"
+    "Tower.Core",
+    "Tower.UI"
   ],
   "includePlatforms": [
     "Editor"
