@@ -14,6 +14,9 @@ namespace Tower.Core
         [SerializeField] private int basePower;
         [SerializeField] private float amplificationMultiplier = 1f;
         [SerializeField] private AbilityTargetType targetType;
+        // T18: rounds the ability stays unavailable after a successful use.
+        // Zero means no cooldown.
+        [SerializeField] private int cooldownRounds;
 
         public string Id => id;
         public string DisplayName => displayName;
@@ -24,6 +27,7 @@ namespace Tower.Core
         public int BasePower => basePower;
         public float AmplificationMultiplier => amplificationMultiplier;
         public AbilityTargetType TargetType => targetType;
+        public int CooldownRounds => cooldownRounds;
 
         public static AbilityDef CreateRuntime(
             string id,
@@ -33,7 +37,8 @@ namespace Tower.Core
             AbilityTargetType targetType,
             MarkDef targetMark = null,
             float amplificationMultiplier = 1f,
-            string displayName = null)
+            string displayName = null,
+            int cooldownRounds = 0)
         {
             var ability = CreateInstance<AbilityDef>();
             ability.id = id;
@@ -44,6 +49,7 @@ namespace Tower.Core
             ability.basePower = basePower;
             ability.amplificationMultiplier = amplificationMultiplier;
             ability.targetType = targetType;
+            ability.cooldownRounds = cooldownRounds;
             return ability;
         }
     }

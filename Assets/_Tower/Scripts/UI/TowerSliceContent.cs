@@ -22,11 +22,11 @@ namespace Tower.UI
             var quickSlash = AbilityDef.CreateRuntime("quick-slash", AbilityTag.Consume, 4, 1, AbilityTargetType.Enemy, displayName: "Quick Slash");
             var focusStrike = AbilityDef.CreateRuntime("focus-strike", AbilityTag.Apply, 3, 2, AbilityTargetType.Enemy, displayName: "Focus Strike");
             var burningBrand = AbilityDef.CreateRuntime("burning-brand", AbilityTag.Apply, 3, 3, AbilityTargetType.Enemy, displayName: "Burning Brand");
-            var thermalBreak = AbilityDef.CreateRuntime("thermal-break", AbilityTag.Consume, 5, 1, AbilityTargetType.Enemy, displayName: "Thermal Break");
-            var holdLine = AbilityDef.CreateRuntime("hold-line", AbilityTag.Amplify, 0, 3, AbilityTargetType.Ally, amplificationMultiplier: 1.5f, displayName: "Hold Line");
+            var thermalBreak = AbilityDef.CreateRuntime("thermal-break", AbilityTag.Consume, 5, 1, AbilityTargetType.Enemy, displayName: "Thermal Break", cooldownRounds: 2);
+            var holdLine = AbilityDef.CreateRuntime("hold-line", AbilityTag.Amplify, 0, 3, AbilityTargetType.Ally, amplificationMultiplier: 1.5f, displayName: "Hold Line", cooldownRounds: 1);
             var guardedSurge = AbilityDef.CreateRuntime("guarded-surge", AbilityTag.Apply, 2, 1, AbilityTargetType.Enemy, displayName: "Guarded Surge");
             var frostBolt = AbilityDef.CreateRuntime("frost-bolt", AbilityTag.Apply, 2, 4, AbilityTargetType.Enemy, displayName: "Frost Bolt");
-            var shatterFrost = AbilityDef.CreateRuntime("shatter-frost", AbilityTag.Consume, 4, 3, AbilityTargetType.Enemy, displayName: "Shatter Frost");
+            var shatterFrost = AbilityDef.CreateRuntime("shatter-frost", AbilityTag.Consume, 4, 3, AbilityTargetType.Enemy, displayName: "Shatter Frost", cooldownRounds: 2);
 
             content.Add(CharacterDef.CreateRuntime("regressor", "Regressor", 28, 4, 1, 6, DispositionType.Aggressive, new[] { quickSlash, focusStrike }, isReturner: true));
             content.Add(CharacterDef.CreateRuntime("ember", "Ember Vanguard", 22, 4, 1, 5, DispositionType.Aggressive, new[] { burningBrand, thermalBreak }));

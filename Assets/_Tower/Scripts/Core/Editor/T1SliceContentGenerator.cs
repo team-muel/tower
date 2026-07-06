@@ -30,10 +30,10 @@ namespace Tower.Core.Editor
             var frostBolt = CreateAbility("A_FrostBolt", "Frost Bolt", AbilityTag.Apply, frost, 5, 1, 6, 1f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_FrostBolt.asset");
             var burningBrand = CreateAbility("A_BurningBrand", "Burning Brand", AbilityTag.Apply, burn, 4, 1, 5, 1f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_BurningBrand.asset");
             var chillTrap = CreateAbility("A_ChillTrap", "Chill Trap", AbilityTag.Apply, frost, 3, 2, 4, 1f, AbilityTargetType.Cell, AbilitiesRoot + "/A_ChillTrap.asset");
-            var shatterFrost = CreateAbility("A_ShatterFrost", "Shatter Frost", AbilityTag.Consume, frost, 4, 2, 12, 1f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_ShatterFrost.asset");
+            var shatterFrost = CreateAbility("A_ShatterFrost", "Shatter Frost", AbilityTag.Consume, frost, 4, 2, 12, 1f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_ShatterFrost.asset", cooldownRounds: 2);
             var igniteAsh = CreateAbility("A_IgniteAsh", "Ignite Ash", AbilityTag.Consume, burn, 4, 2, 11, 1f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_IgniteAsh.asset");
-            var thermalBreak = CreateAbility("A_ThermalBreak", "Thermal Break", AbilityTag.Consume, burn, 1, 2, 13, 1f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_ThermalBreak.asset");
-            var focusStrike = CreateAbility("A_FocusStrike", "Focus Strike", AbilityTag.Amplify, null, 1, 1, 8, 1.5f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_FocusStrike.asset");
+            var thermalBreak = CreateAbility("A_ThermalBreak", "Thermal Break", AbilityTag.Consume, burn, 1, 2, 13, 1f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_ThermalBreak.asset", cooldownRounds: 2);
+            var focusStrike = CreateAbility("A_FocusStrike", "Focus Strike", AbilityTag.Amplify, null, 1, 1, 8, 1.5f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_FocusStrike.asset", cooldownRounds: 1);
             var guardedSurge = CreateAbility("A_GuardedSurge", "Guarded Surge", AbilityTag.Amplify, null, 2, 1, 3, 1.35f, AbilityTargetType.Ally, AbilitiesRoot + "/A_GuardedSurge.asset");
             var quickSlash = CreateAbility("A_QuickSlash", "Quick Slash", AbilityTag.None, null, 1, 0, 7, 1f, AbilityTargetType.Enemy, AbilitiesRoot + "/A_QuickSlash.asset");
             var holdLine = CreateAbility("A_HoldLine", "Hold Line", AbilityTag.None, null, 1, 0, 2, 1f, AbilityTargetType.Ally, AbilitiesRoot + "/A_HoldLine.asset");
@@ -66,7 +66,7 @@ namespace Tower.Core.Editor
             return mark;
         }
 
-        private static AbilityDef CreateAbility(string id, string displayName, AbilityTag tag, MarkDef targetMark, int range, int cost, int basePower, float amplificationMultiplier, AbilityTargetType targetType, string path)
+        private static AbilityDef CreateAbility(string id, string displayName, AbilityTag tag, MarkDef targetMark, int range, int cost, int basePower, float amplificationMultiplier, AbilityTargetType targetType, string path, int cooldownRounds = 0)
         {
             var ability = CreateAsset<AbilityDef>(path);
             SetString(ability, "id", id);
@@ -78,6 +78,7 @@ namespace Tower.Core.Editor
             SetInt(ability, "basePower", basePower);
             SetFloat(ability, "amplificationMultiplier", amplificationMultiplier);
             SetEnum(ability, "targetType", targetType);
+            SetInt(ability, "cooldownRounds", cooldownRounds);
             return ability;
         }
 
