@@ -18,6 +18,7 @@ namespace Tower.Core
         private readonly List<ExpeditionMember> roster;
         private readonly List<ExpeditionMember> initialRoster;
         private readonly List<string> missingIds;
+        private readonly List<string> hiddenMissingIds;
         private readonly List<string> fallenIds;
         private readonly HashSet<int> shortcutStairways;
 
@@ -31,6 +32,7 @@ namespace Tower.Core
             List<ExpeditionMember> roster,
             List<ExpeditionMember> initialRoster,
             List<string> missingIds,
+            List<string> hiddenMissingIds,
             List<string> fallenIds,
             HashSet<int> shortcutStairways)
         {
@@ -43,6 +45,7 @@ namespace Tower.Core
             this.roster = roster;
             this.initialRoster = initialRoster;
             this.missingIds = missingIds;
+            this.hiddenMissingIds = hiddenMissingIds;
             this.fallenIds = fallenIds;
             this.shortcutStairways = shortcutStairways;
         }
@@ -62,9 +65,16 @@ namespace Tower.Core
         // the roster from this template (minus missing members).
         public IReadOnlyList<ExpeditionMember> InitialRoster => initialRoster;
 
-        // Permanent record: members lost to the three-death rule. Survives
-        // rollback and the great regression.
+        // Record: members lost to the three-death rule. Externally this is
+        // the single source of truth for "missing" — generated companions
+        // stay here forever; hidden-missing presets also appear here so the
+        // player-facing view cannot tell them apart (T12).
         public IReadOnlyList<string> MissingIds => missingIds;
+
+        // T12 internal record (never surface in UI): presets that only *look*
+        // missing. They are also listed in MissingIds, but the great
+        // regression returns them to the roster instead of losing them.
+        public IReadOnlyList<string> HiddenMissingIds => hiddenMissingIds;
 
         // Record: members whose deaths were locked in by an advance. Cleared
         // by the great regression (time rolls back past their deaths).
@@ -120,6 +130,7 @@ namespace Tower.Core
                 new List<ExpeditionMember>(members),
                 new List<string>(),
                 new List<string>(),
+                new List<string>(),
                 new HashSet<int>());
         }
 
@@ -133,6 +144,7 @@ namespace Tower.Core
             List<ExpeditionMember> roster,
             List<ExpeditionMember> initialRoster,
             List<string> missingIds,
+            List<string> hiddenMissingIds,
             List<string> fallenIds,
             HashSet<int> shortcutStairways)
         {
@@ -161,7 +173,8 @@ namespace Tower.Core
                 return Result<ExpeditionState>.Failure("Retreat count cannot be negative.");
             }
 
-            if (roster == null || initialRoster == null || missingIds == null || fallenIds == null || shortcutStairways == null)
+            if (roster == null || initialRoster == null || missingIds == null || hiddenMissingIds == null
+                || fallenIds == null || shortcutStairways == null)
             {
                 return Result<ExpeditionState>.Failure("Expedition state collections are required.");
             }
@@ -176,6 +189,7 @@ namespace Tower.Core
                 roster,
                 initialRoster,
                 missingIds,
+                hiddenMissingIds,
                 fallenIds,
                 shortcutStairways));
         }

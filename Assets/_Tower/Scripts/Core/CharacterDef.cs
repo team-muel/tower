@@ -5,6 +5,9 @@ namespace Tower.Core
     [CreateAssetMenu(menuName = "Tower/Core/Character", fileName = "CharacterDef")]
     public sealed class CharacterDef : ScriptableObject
     {
+        // Faction id 0 means unaffiliated; 1..3 are the v0 placeholder factions.
+        public const int NoFactionId = 0;
+
         [SerializeField] private string id;
         [SerializeField] private string displayName;
         [SerializeField] private int maxHp = 1;
@@ -16,6 +19,12 @@ namespace Tower.Core
         [SerializeField] private AbilityDef[] defaultAbilities;
         [SerializeField] private bool isReturner;
 
+        // T12: preset companions are the hand-authored origin-style members
+        // (one per faction). They secretly ignore the permanent three-death
+        // missing rule — hidden from the player, see ExpeditionRules.
+        [SerializeField] private bool isPreset;
+        [SerializeField] private int factionId = NoFactionId;
+
         public string Id => id;
         public string DisplayName => displayName;
         public int MaxHp => maxHp;
@@ -26,6 +35,8 @@ namespace Tower.Core
         public PassiveDef Passive => passive;
         public AbilityDef[] DefaultAbilities => defaultAbilities;
         public bool IsReturner => isReturner;
+        public bool IsPreset => isPreset;
+        public int FactionId => factionId;
 
         public static CharacterDef CreateRuntime(
             string id,
@@ -37,7 +48,9 @@ namespace Tower.Core
             DispositionType disposition,
             AbilityDef[] defaultAbilities,
             PassiveDef passive = null,
-            bool isReturner = false)
+            bool isReturner = false,
+            bool isPreset = false,
+            int factionId = NoFactionId)
         {
             var definition = CreateInstance<CharacterDef>();
             definition.id = id;
@@ -50,6 +63,8 @@ namespace Tower.Core
             definition.passive = passive;
             definition.defaultAbilities = defaultAbilities;
             definition.isReturner = isReturner;
+            definition.isPreset = isPreset;
+            definition.factionId = factionId;
             return definition;
         }
     }

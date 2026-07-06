@@ -7,7 +7,9 @@ namespace Tower.Core
     // Maps ExpeditionState <-> SaveGame. Character definitions are stored as
     // ids and resolved through the injected source on load; ability loadouts
     // are rebuilt from the definition's default abilities with the saved slot
-    // count (v0 — loadout customisation is not persisted yet).
+    // count (v0 — loadout customisation is not persisted yet). Definition
+    // fields (stats, disposition, isPreset, factionId) always come from the
+    // resolved CharacterDef, so they are not duplicated in the save file.
     public static class ExpeditionSaveMapper
     {
         public static Result<SaveGame> ToSave(ExpeditionState state)
@@ -29,6 +31,7 @@ namespace Tower.Core
                 roster = state.Roster.Select(ToSaveMember).ToArray(),
                 initialRoster = state.InitialRoster.Select(ToSaveMember).ToArray(),
                 missingIds = state.MissingIds.ToArray(),
+                hiddenMissingIds = state.HiddenMissingIds.ToArray(),
                 fallenIds = state.FallenIds.ToArray(),
                 shortcutStairways = state.ShortcutStairways.OrderBy(index => index).ToArray()
             };
@@ -74,6 +77,7 @@ namespace Tower.Core
                 roster.Value,
                 initialRoster.Value,
                 new List<string>(save.missingIds ?? new string[0]),
+                new List<string>(save.hiddenMissingIds ?? new string[0]),
                 new List<string>(save.fallenIds ?? new string[0]),
                 new HashSet<int>(save.shortcutStairways ?? new int[0]));
         }
