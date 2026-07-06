@@ -251,35 +251,180 @@ namespace Tower.UI
                 canvas.transform,
                 "Expedition Panel",
                 new Vector2(0f, 0f),
-                new Vector2(0.32f, 1f),
-                new Vector2(12f, 12f),
-                new Vector2(-12f, -12f));
+                new Vector2(1f, 1f),
+                Vector2.zero,
+                Vector2.zero);
 
-            statusText = RuntimeSceneUi.AddText(sidePanel, "Status", "", 18, TextAnchor.UpperLeft);
-            explorationText = RuntimeSceneUi.AddText(sidePanel, "Exploration", "", 16, TextAnchor.UpperLeft);
-            turnText = RuntimeSceneUi.AddText(sidePanel, "Turn", "", 16, TextAnchor.UpperLeft);
-            initiativeText = RuntimeSceneUi.AddText(sidePanel, "Initiative", "", 14, TextAnchor.UpperLeft);
-            unitText = RuntimeSceneUi.AddText(sidePanel, "Units", "", 14, TextAnchor.UpperLeft);
-            moveButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Move", EnterMoveMode));
+            var panelImage = sidePanel.GetComponent<UnityEngine.UI.Image>();
+            if (panelImage != null)
+            {
+                panelImage.color = new Color(0f, 0f, 0f, 0f);
+            }
 
+            var topLeftPanel = RuntimeSceneUi.CreatePanel(
+                sidePanel.transform,
+                "TopLeftPanel",
+                new Vector2(0.02f, 0.7f),
+                new Vector2(0.35f, 0.98f),
+                Vector2.zero,
+                Vector2.zero);
+            var tlImg = topLeftPanel.GetComponent<UnityEngine.UI.Image>();
+            if (tlImg != null) tlImg.color = new Color(0.1f, 0.1f, 0.1f, 0.65f);
+            
+            statusText = RuntimeSceneUi.AddText(topLeftPanel, "Status", "", 13, TextAnchor.UpperLeft);
+            var statusRect = statusText.rectTransform;
+            statusRect.anchorMin = Vector2.zero;
+            statusRect.anchorMax = Vector2.one;
+            statusRect.offsetMin = new Vector2(8f, 8f);
+            statusRect.offsetMax = new Vector2(-8f, -8f);
+
+            var topCenterPanel = RuntimeSceneUi.CreatePanel(
+                sidePanel.transform,
+                "TopCenterPanel",
+                new Vector2(0.38f, 0.85f),
+                new Vector2(0.62f, 0.98f),
+                Vector2.zero,
+                Vector2.zero);
+            var tcImg = topCenterPanel.GetComponent<UnityEngine.UI.Image>();
+            if (tcImg != null) tcImg.color = new Color(0.1f, 0.1f, 0.1f, 0.65f);
+            
+            explorationText = RuntimeSceneUi.AddText(topCenterPanel, "Exploration", "", 13, TextAnchor.UpperCenter);
+            var expRect = explorationText.rectTransform;
+            expRect.anchorMin = new Vector2(0f, 0.5f);
+            expRect.anchorMax = new Vector2(1f, 1f);
+            expRect.offsetMin = Vector2.zero;
+            expRect.offsetMax = Vector2.zero;
+
+            turnText = RuntimeSceneUi.AddText(topCenterPanel, "Turn", "", 12, TextAnchor.UpperCenter);
+            var turnRect = turnText.rectTransform;
+            turnRect.anchorMin = new Vector2(0f, 0f);
+            turnRect.anchorMax = new Vector2(1f, 0.5f);
+            turnRect.offsetMin = Vector2.zero;
+            turnRect.offsetMax = Vector2.zero;
+
+            var topRightPanel = RuntimeSceneUi.CreatePanel(
+                sidePanel.transform,
+                "TopRightPanel",
+                new Vector2(0.65f, 0.9f),
+                new Vector2(0.98f, 0.98f),
+                Vector2.zero,
+                Vector2.zero);
+            var trImg = topRightPanel.GetComponent<UnityEngine.UI.Image>();
+            if (trImg != null) trImg.color = new Color(0f, 0f, 0f, 0f);
+
+            var menuBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topRightPanel, "Main Menu", () => SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Boot)));
+            var menuRect = menuBtn.GetComponent<RectTransform>();
+            menuRect.anchorMin = new Vector2(0f, 0f);
+            menuRect.anchorMax = new Vector2(0.3f, 1f);
+            menuRect.offsetMin = Vector2.zero;
+            menuRect.offsetMax = Vector2.zero;
+
+            var retreatBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topRightPanel, "Retreat", Retreat));
+            var retreatRect = retreatBtn.GetComponent<RectTransform>();
+            retreatRect.anchorMin = new Vector2(0.35f, 0f);
+            retreatRect.anchorMax = new Vector2(0.65f, 1f);
+            retreatRect.offsetMin = Vector2.zero;
+            retreatRect.offsetMax = Vector2.zero;
+
+            var mapBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topRightPanel, "Map", ToggleDungeonMap));
+            var mapRect = mapBtn.GetComponent<RectTransform>();
+            mapRect.anchorMin = new Vector2(0.7f, 0f);
+            mapRect.anchorMax = new Vector2(1f, 1f);
+            mapRect.offsetMin = Vector2.zero;
+            mapRect.offsetMax = Vector2.zero;
+
+            var bottomLeftPanel = RuntimeSceneUi.CreatePanel(
+                sidePanel.transform,
+                "BottomLeftPanel",
+                new Vector2(0.02f, 0.02f),
+                new Vector2(0.35f, 0.35f),
+                Vector2.zero,
+                Vector2.zero);
+            var blImg = bottomLeftPanel.GetComponent<UnityEngine.UI.Image>();
+            if (blImg != null) blImg.color = new Color(0.1f, 0.1f, 0.1f, 0.65f);
+            
+            initiativeText = RuntimeSceneUi.AddText(bottomLeftPanel, "Initiative", "", 13, TextAnchor.UpperLeft);
+            var initRect = initiativeText.rectTransform;
+            initRect.anchorMin = new Vector2(0f, 0.5f);
+            initRect.anchorMax = new Vector2(1f, 1f);
+            initRect.offsetMin = new Vector2(8f, 4f);
+            initRect.offsetMax = new Vector2(-8f, -4f);
+
+            unitText = RuntimeSceneUi.AddText(bottomLeftPanel, "Units", "", 12, TextAnchor.UpperLeft);
+            var unitRect = unitText.rectTransform;
+            unitRect.anchorMin = new Vector2(0f, 0f);
+            unitRect.anchorMax = new Vector2(1f, 0.5f);
+            unitRect.offsetMin = new Vector2(8f, 4f);
+            unitRect.offsetMax = new Vector2(-8f, -4f);
+
+            var bottomCenterPanel = RuntimeSceneUi.CreatePanel(
+                sidePanel.transform,
+                "BottomCenterPanel",
+                new Vector2(0.38f, 0.02f),
+                new Vector2(0.98f, 0.22f),
+                Vector2.zero,
+                Vector2.zero);
+            var bcPanelImg = bottomCenterPanel.GetComponent<UnityEngine.UI.Image>();
+            if (bcPanelImg != null) bcPanelImg.color = new Color(0.1f, 0.1f, 0.1f, 0.65f);
+
+            resultText = RuntimeSceneUi.AddText(bottomCenterPanel, "Result", "", 13, TextAnchor.UpperLeft);
+            var resRect = resultText.rectTransform;
+            resRect.anchorMin = new Vector2(0f, 0.5f);
+            resRect.anchorMax = new Vector2(1f, 1f);
+            resRect.offsetMin = new Vector2(8f, 4f);
+            resRect.offsetMax = new Vector2(-8f, -4f);
+
+            logText = RuntimeSceneUi.AddText(bottomCenterPanel, "Log", "", 12, TextAnchor.UpperLeft);
+            var logRect = logText.rectTransform;
+            logRect.anchorMin = new Vector2(0f, 0f);
+            logRect.anchorMax = new Vector2(1f, 0.5f);
+            logRect.offsetMin = new Vector2(8f, 4f);
+            logRect.offsetMax = new Vector2(-8f, -4f);
+
+            var centerDoorPanel = RuntimeSceneUi.CreatePanel(
+                sidePanel.transform,
+                "CenterDoorPanel",
+                new Vector2(0.35f, 0.35f),
+                new Vector2(0.65f, 0.65f),
+                Vector2.zero,
+                Vector2.zero);
+            var cdpImg = centerDoorPanel.GetComponent<UnityEngine.UI.Image>();
+            if (cdpImg != null) cdpImg.color = new Color(0f, 0f, 0f, 0f);
+
+            AddDoorButton(centerDoorPanel, "North Door");
+            AddDoorButton(centerDoorPanel, "East Door");
+            AddDoorButton(centerDoorPanel, "West Door");
+            
+            for (int i = 0; i < doorButtons.Count; i++)
+            {
+                var dRect = doorButtons[i].GetComponent<RectTransform>();
+                dRect.anchorMin = new Vector2(0.1f, 0.7f - (i * 0.3f));
+                dRect.anchorMax = new Vector2(0.9f, 0.9f - (i * 0.3f));
+                dRect.offsetMin = Vector2.zero;
+                dRect.offsetMax = Vector2.zero;
+            }
+
+            proceedButton = RegisterQaButton(RuntimeSceneUi.AddButton(centerDoorPanel, "Next Floor", BeginNextFloor));
+            var procRect = proceedButton.GetComponent<RectTransform>();
+            procRect.anchorMin = new Vector2(0.1f, 0.1f);
+            procRect.anchorMax = new Vector2(0.9f, 0.4f);
+            procRect.offsetMin = Vector2.zero;
+            procRect.offsetMax = Vector2.zero;
+            proceedButton.gameObject.SetActive(false);
+
+            var dummyContainer = new GameObject("Dummy Button Container");
+            dummyContainer.transform.SetParent(sidePanel.transform, false);
+            dummyContainer.SetActive(false);
+
+            moveButton = RegisterQaButton(RuntimeSceneUi.AddButton(dummyContainer.transform, "Move", EnterMoveMode));
             for (var index = 0; index < 2; index++)
             {
                 var slot = index;
-                abilityButtons.Add(RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Ability " + (index + 1), () => EnterAbilityMode(slot))));
+                abilityButtons.Add(RegisterQaButton(RuntimeSceneUi.AddButton(dummyContainer.transform, "Ability " + (index + 1), () => EnterAbilityMode(slot))));
             }
+            RegisterQaButton(RuntimeSceneUi.AddButton(dummyContainer.transform, "Order: Focus Nearest", IssueFocusOrder));
+            RegisterQaButton(RuntimeSceneUi.AddButton(dummyContainer.transform, "Skip Turn", SkipTurn));
 
-            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Order: Focus Nearest", IssueFocusOrder));
-            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Skip Turn", SkipTurn));
-            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Retreat", Retreat));
-            AddDoorButton(sidePanel, "North Door");
-            AddDoorButton(sidePanel, "East Door");
-            AddDoorButton(sidePanel, "West Door");
-            proceedButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Next Floor", BeginNextFloor));
-            proceedButton.gameObject.SetActive(false);
-            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Main Menu", () => SceneSequenceManager.Instance.LoadSceneWithSequence(TowerSceneNames.Boot)));
-            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Map", ToggleDungeonMap));
-            resultText = RuntimeSceneUi.AddText(sidePanel, "Result", "", 15, TextAnchor.UpperLeft);
-            logText = RuntimeSceneUi.AddText(sidePanel, "Log", "", 14, TextAnchor.UpperLeft);
             HideDoorButtons();
         }
 
