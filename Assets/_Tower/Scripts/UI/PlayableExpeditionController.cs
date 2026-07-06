@@ -16,10 +16,12 @@ namespace Tower.UI
     {
         private const string ReturnerId = "regressor";
         private const int BaseSeed = 20260706;
+        private const string QaStateKey = "expedition";
 
         private readonly Dictionary<string, UnitToken> tokens = new Dictionary<string, UnitToken>(StringComparer.Ordinal);
         private readonly List<FloorRoom> encounterRooms = new List<FloorRoom>();
         private readonly List<string> logLines = new List<string>();
+        private readonly List<string> qaButtonNames = new List<string>();
 
         private TowerSliceContent content;
         private SaveRepository repository;
@@ -31,6 +33,7 @@ namespace Tower.UI
         private CoreAiTurnDriver aiDriver;
         private PlayerTurnController playerController;
         private OrderBoard orderBoard;
+        private StatusBoard statusBoard;
         private Camera sceneCamera;
         private Text statusText;
         private Text turnText;
@@ -50,6 +53,7 @@ namespace Tower.UI
             CreateLighting();
             OpenRepository();
             OpenExpedition();
+            QaRuntime.RegisterStateContributor(QaStateKey, FillQaState);
         }
 
         private void Update()
@@ -91,6 +95,89 @@ namespace Tower.UI
             StartCurrentFloor();
         }
 
+        private void OnDestroy()
+        {
+            QaRuntime.UnregisterStateContributor(QaStateKey);
+            foreach (var name in qaButtonNames)
+            {
+                QaRuntime.UnregisterButton(name);
+            }
+
+            qaButtonNames.Clear();
+        }
+
+        private Button RegisterQaButton(Button button)
+        {
+            if (button == null)
+            {
+                return null;
+            }
+
+            var name = button.gameObject.name;
+            qaButtonNames.Add(name);
+            QaRuntime.RegisterButton(name, () => button.onClick.Invoke());
+            return button;
+        }
+
+        private void FillQaState(QaStateSnapshot snapshot)
+        {
+            if (state != null)
+            {
+                snapshot.expedition = new QaExpeditionSnapshot
+                {
+                    stairwayIndex = state.StairwayIndex,
+                    stairwayCount = state.StairwayCount,
+                    floorIndex = state.FloorIndex,
+                    floorCount = state.FloorCount,
+                    roomIndex = encounterIndex,
+                    roomCount = encounterRooms.Count,
+                    retreatCount = state.RetreatCount,
+                    isComplete = state.IsComplete
+                };
+            }
+
+            if (engine == null)
+            {
+                return;
+            }
+
+            var combat = new QaCombatSnapshot
+            {
+                round = engine.RoundNumber,
+                activeUnitId = engine.CurrentTurn == null ? string.Empty : engine.CurrentTurn.UnitId
+            };
+            combat.initiativeOrder.AddRange(engine.CurrentRoundOrder);
+            foreach (var unitId in tokens.Keys.OrderBy(id => id, StringComparer.Ordinal))
+            {
+                var combatant = engine.GetCombatant(unitId);
+                if (combatant == null)
+                {
+                    continue;
+                }
+
+                var unit = new QaUnitSnapshot
+                {
+                    unitId = unitId,
+                    team = combatant.Team.ToString(),
+                    currentHp = combatant.State.CurrentHp,
+                    maxHp = combatant.State.Definition.MaxHp,
+                    alive = engine.IsAlive(unitId)
+                };
+
+                var position = gridView != null && gridView.Map != null ? gridView.Map.FindOccupant(unitId) : null;
+                unit.x = position.HasValue ? position.Value.X : -1;
+                unit.y = position.HasValue ? position.Value.Y : -1;
+                if (statusBoard != null)
+                {
+                    unit.marks.AddRange(statusBoard.GetActiveMarkIds(unitId, engine.RoundNumber));
+                }
+
+                combat.units.Add(unit);
+            }
+
+            snapshot.combat = combat;
+        }
+
         private void BuildUi()
         {
             var canvas = RuntimeSceneUi.CreateCanvas("Expedition Canvas");
@@ -105,20 +192,20 @@ namespace Tower.UI
 
             statusText = RuntimeSceneUi.AddText(sidePanel, "Status", "", 18, TextAnchor.UpperLeft);
             turnText = RuntimeSceneUi.AddText(sidePanel, "Turn", "", 16, TextAnchor.UpperLeft);
-            moveButton = RuntimeSceneUi.AddButton(sidePanel, "Move", () => playerController?.EnterMoveMode());
+            moveButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Move", () => playerController?.EnterMoveMode()));
 
             for (var index = 0; index < 2; index++)
             {
                 var slot = index;
-                abilityButtons.Add(RuntimeSceneUi.AddButton(sidePanel, "Ability " + (index + 1), () => playerController?.EnterAbilityMode(slot)));
+                abilityButtons.Add(RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Ability " + (index + 1), () => playerController?.EnterAbilityMode(slot))));
             }
 
-            RuntimeSceneUi.AddButton(sidePanel, "Order: Focus Nearest", IssueFocusOrder);
-            RuntimeSceneUi.AddButton(sidePanel, "Skip Turn", () => playerController?.Skip());
-            RuntimeSceneUi.AddButton(sidePanel, "Retreat", Retreat);
-            proceedButton = RuntimeSceneUi.AddButton(sidePanel, "Next Floor", BeginNextFloor);
+            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Order: Focus Nearest", IssueFocusOrder));
+            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Skip Turn", () => playerController?.Skip()));
+            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Retreat", Retreat));
+            proceedButton = RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Next Floor", BeginNextFloor));
             proceedButton.gameObject.SetActive(false);
-            RuntimeSceneUi.AddButton(sidePanel, "Main Menu", () => SceneManager.LoadScene(TowerSceneNames.Boot));
+            RegisterQaButton(RuntimeSceneUi.AddButton(sidePanel, "Main Menu", () => SceneManager.LoadScene(TowerSceneNames.Boot)));
             logText = RuntimeSceneUi.AddText(sidePanel, "Log", "", 14, TextAnchor.UpperLeft);
         }
 
@@ -281,7 +368,7 @@ namespace Tower.UI
                 combatants.Add(combatant.Value);
             }
 
-            var statusBoard = new StatusBoard();
+            statusBoard = new StatusBoard();
             var resolver = AbilityResolver.Create(map, statusBoard);
             if (resolver.IsFailure)
             {
@@ -659,6 +746,7 @@ namespace Tower.UI
 
             gridView = null;
             highlighter = null;
+            statusBoard = null;
             engine = null;
             aiDriver = null;
             playerController = null;

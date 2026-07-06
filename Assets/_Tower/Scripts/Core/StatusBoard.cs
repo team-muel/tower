@@ -133,6 +133,27 @@ namespace Tower.Core
             return true;
         }
 
+        // QA harness support: active (non-expired) mark ids, sorted for determinism.
+        public IReadOnlyList<string> GetActiveMarkIds(string unitId, int currentRound)
+        {
+            if (string.IsNullOrEmpty(unitId) || !marksByUnit.TryGetValue(unitId, out var unitMarks))
+            {
+                return Array.Empty<string>();
+            }
+
+            var ids = new List<string>();
+            foreach (var pair in unitMarks)
+            {
+                if (currentRound < pair.Value.ExpiresAtRound)
+                {
+                    ids.Add(pair.Key);
+                }
+            }
+
+            ids.Sort(StringComparer.Ordinal);
+            return ids;
+        }
+
         public void ClearUnit(string unitId)
         {
             if (string.IsNullOrEmpty(unitId))
