@@ -42,6 +42,9 @@ namespace Tower.UI
 
         public static string[] PartyIds => new[] { "regressor", "ember", "ward", "glass" };
 
+        public const int MinSpeedModifier = -2;
+        public const int MaxSpeedModifier = 2;
+
         public static int GetSpeedModifier(string characterId)
         {
             return PlayerPrefs.GetInt("tower.speed." + characterId, 0);
@@ -49,7 +52,7 @@ namespace Tower.UI
 
         public static void SetSpeedModifier(string characterId, int modifier)
         {
-            PlayerPrefs.SetInt("tower.speed." + characterId, Mathf.Clamp(modifier, -2, 2));
+            PlayerPrefs.SetInt("tower.speed." + characterId, Mathf.Clamp(modifier, MinSpeedModifier, MaxSpeedModifier));
             PlayerPrefs.Save();
         }
 
