@@ -11,6 +11,7 @@ namespace Tower.Combat
         [SerializeField] private float _heightOffset = 0.55f;
 
         private GridView _gridView;
+        private AnalogBattlefieldView _analogView;
         private Coroutine _moveCoroutine;
         private IReadOnlyList<GridPos> _activePath;
 
@@ -18,7 +19,25 @@ namespace Tower.Combat
 
         public GridPos Position { get; private set; }
 
+        // T20: continuous position; grid placements report the cell center.
+        public BattlePos BattlePosition { get; private set; }
+
         public static UnitToken Spawn(GridView gridView, GridPos start, string occupantId, Color color)
+        {
+            UnitToken token = CreateTokenObject(occupantId, color);
+            token.Initialize(gridView, start, occupantId);
+            return token;
+        }
+
+        // T20: spawn at a continuous position on the analog battlefield view.
+        public static UnitToken SpawnAnalog(AnalogBattlefieldView view, BattlePos start, string occupantId, Color color)
+        {
+            UnitToken token = CreateTokenObject(occupantId, color);
+            token.InitializeAnalog(view, start, occupantId);
+            return token;
+        }
+
+        private static UnitToken CreateTokenObject(string occupantId, Color color)
         {
             GameObject tokenObject = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             tokenObject.name = string.IsNullOrEmpty(occupantId) ? "Unit Token" : "Unit Token " + occupantId;
@@ -29,16 +48,23 @@ namespace Tower.Combat
             material.color = color;
             renderer.sharedMaterial = material;
 
-            UnitToken token = tokenObject.AddComponent<UnitToken>();
-            token.Initialize(gridView, start, occupantId);
-            return token;
+            return tokenObject.AddComponent<UnitToken>();
         }
 
         public void Initialize(GridView gridView, GridPos start, string occupantId)
         {
             _gridView = gridView;
+            _analogView = null;
             OccupantId = occupantId;
             Place(start);
+        }
+
+        public void InitializeAnalog(AnalogBattlefieldView view, BattlePos start, string occupantId)
+        {
+            _analogView = view;
+            _gridView = null;
+            OccupantId = occupantId;
+            PlaceAt(start);
         }
 
         public void Place(GridPos pos)
@@ -60,8 +86,18 @@ namespace Tower.Combat
             }
 
             Position = pos;
+            BattlePosition = BattleScale.ToBattlePos(pos);
             transform.position = GetWorldPosition(pos);
             return true;
+        }
+
+        // T20: view-only continuous placement; battlefield occupancy is owned
+        // by AnalogBattlefield (the caller keeps them in sync).
+        public void PlaceAt(BattlePos pos)
+        {
+            BattlePosition = pos;
+            Position = BattleScale.ToGridPos(pos);
+            transform.position = GetWorldPosition(pos);
         }
 
         public Coroutine MoveAlong(IReadOnlyList<GridPos> path)
@@ -148,10 +184,20 @@ namespace Tower.Combat
         {
             if (_gridView == null)
             {
-                return new Vector3(pos.X, _heightOffset, pos.Y);
+                return GetWorldPosition(BattleScale.ToBattlePos(pos));
             }
 
             return _gridView.CellToWorld(pos) + Vector3.up * _heightOffset;
+        }
+
+        private Vector3 GetWorldPosition(BattlePos pos)
+        {
+            if (_analogView != null)
+            {
+                return _analogView.ToWorld(pos) + Vector3.up * _heightOffset;
+            }
+
+            return new Vector3(pos.X, _heightOffset, pos.Y);
         }
     }
 }

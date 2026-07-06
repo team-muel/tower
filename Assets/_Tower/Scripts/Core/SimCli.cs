@@ -65,6 +65,20 @@ namespace Tower.Core
                     && int.TryParse(maxRoundsText, out var maxRounds))
                 {
                     options.maxRounds = maxRounds;
+                    continue;
+                }
+
+                // T20: battlefield space selector ("grid" | "analog").
+                if (TryReadValue(args, ref index, arg, "-simSpace", "--sim-space", out var spaceText))
+                {
+                    if (string.Equals(spaceText, "grid", StringComparison.OrdinalIgnoreCase))
+                    {
+                        options.spaceMode = CombatSpaceMode.Grid;
+                    }
+                    else if (string.Equals(spaceText, "analog", StringComparison.OrdinalIgnoreCase))
+                    {
+                        options.spaceMode = CombatSpaceMode.Analog;
+                    }
                 }
             }
         }

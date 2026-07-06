@@ -3,22 +3,25 @@ using System.Linq;
 
 namespace Tower.Core
 {
-    // Resolves an AbilityDef use by a combatant on a unit or cell target:
-    // validates target type, Manhattan range, and Bresenham line of sight,
+    // Resolves an AbilityDef use by a combatant on a unit or point target:
+    // validates target type, range and line of sight through IBattlefield,
     // then applies tag semantics (Apply/Consume/Amplify) and damage.
+    // T20: grid mode keeps its legacy rules (Manhattan range, Bresenham LoS)
+    // via GridBattlefieldAdapter; analog mode uses euclidean range and
+    // always-clear LoS (v0).
     public sealed class AbilityResolver : IAbilityExecutor
     {
         // v0: consuming a mark multiplies base power by this bonus. Kept as a
         // constant for now; move to data (AbilityDef/MarkDef) when tuning starts.
         public const float ConsumeBonusMultiplier = 1.5f;
 
-        private readonly GridMap map;
+        private readonly IBattlefield battlefield;
         private readonly StatusBoard statusBoard;
         private readonly ICombatObserver combatObserver;
 
-        private AbilityResolver(GridMap map, StatusBoard statusBoard, ICombatObserver combatObserver)
+        private AbilityResolver(IBattlefield battlefield, StatusBoard statusBoard, ICombatObserver combatObserver)
         {
-            this.map = map;
+            this.battlefield = battlefield;
             this.statusBoard = statusBoard;
             this.combatObserver = combatObserver;
         }
@@ -32,12 +35,22 @@ namespace Tower.Core
                 return Result<AbilityResolver>.Failure("Grid map is required.");
             }
 
+            return Create(new GridBattlefieldAdapter(map), statusBoard, combatObserver);
+        }
+
+        public static Result<AbilityResolver> Create(IBattlefield battlefield, StatusBoard statusBoard, ICombatObserver combatObserver = null)
+        {
+            if (battlefield == null)
+            {
+                return Result<AbilityResolver>.Failure("Battlefield is required.");
+            }
+
             if (statusBoard == null)
             {
                 return Result<AbilityResolver>.Failure("Status board is required.");
             }
 
-            return Result<AbilityResolver>.Success(new AbilityResolver(map, statusBoard, combatObserver));
+            return Result<AbilityResolver>.Success(new AbilityResolver(battlefield, statusBoard, combatObserver));
         }
 
         public Result Execute(TurnEngine engine, UseAbilityCommand command)
@@ -72,7 +85,7 @@ namespace Tower.Core
             var currentRound = engine.RoundNumber;
             statusBoard.OnRoundAdvanced(currentRound);
 
-            var casterPosition = FindOccupant(command.UnitId);
+            var casterPosition = battlefield.FindOccupant(command.UnitId);
             if (!casterPosition.HasValue)
             {
                 return Result.Failure("Caster is not on the grid.");
@@ -84,12 +97,12 @@ namespace Tower.Core
                 return Result.Failure(target.Error);
             }
 
-            if (GridDistance.Manhattan(casterPosition.Value, target.Value.Position) > ability.Range)
+            if (battlefield.Distance(casterPosition.Value, target.Value.Position) > ability.Range)
             {
                 return Result.Failure("Target is out of range.");
             }
 
-            if (!LineOfSight.IsClear(map, casterPosition.Value, target.Value.Position))
+            if (!battlefield.HasLineOfSight(casterPosition.Value, target.Value.Position))
             {
                 return Result.Failure("Line of sight is blocked.");
             }
@@ -111,7 +124,7 @@ namespace Tower.Core
         {
             if (target.Unit == null)
             {
-                // Cell target without an occupant: nothing to affect.
+                // Point target without an occupant: nothing to affect.
                 return Result.Success();
             }
 
@@ -213,11 +226,7 @@ namespace Tower.Core
             if (newHp <= 0)
             {
                 statusBoard.ClearUnit(target.UnitId);
-                var position = FindOccupant(target.UnitId);
-                if (position.HasValue)
-                {
-                    map.ClearOccupant(position.Value, target.UnitId);
-                }
+                battlefield.RemoveOccupant(target.UnitId);
             }
 
             return Result.Success();
@@ -231,7 +240,7 @@ namespace Tower.Core
                 case AbilityTargetType.Ally:
                     return ResolveUnitTarget(engine, caster, ability, command);
                 case AbilityTargetType.Cell:
-                    return ResolveCellTarget(engine, command);
+                    return ResolvePointTarget(engine, command);
                 default:
                     return Result<TargetContext>.Failure("Unsupported target type.");
             }
@@ -265,7 +274,7 @@ namespace Tower.Core
                 return Result<TargetContext>.Failure("Ability must target an ally.");
             }
 
-            var position = FindOccupant(target.UnitId);
+            var position = battlefield.FindOccupant(target.UnitId);
             if (!position.HasValue)
             {
                 return Result<TargetContext>.Failure("Target is not on the grid.");
@@ -274,27 +283,32 @@ namespace Tower.Core
             return Result<TargetContext>.Success(new TargetContext(target, position.Value));
         }
 
-        private Result<TargetContext> ResolveCellTarget(TurnEngine engine, UseAbilityCommand command)
+        private Result<TargetContext> ResolvePointTarget(TurnEngine engine, UseAbilityCommand command)
         {
-            if (!command.TargetCell.HasValue)
+            BattlePos? point = command.TargetPoint;
+            if (!point.HasValue && command.TargetCell.HasValue)
+            {
+                point = BattleScale.ToBattlePos(command.TargetCell.Value);
+            }
+
+            if (!point.HasValue)
             {
                 return Result<TargetContext>.Failure("Ability requires a cell target.");
             }
 
-            var cell = command.TargetCell.Value;
-            if (!map.InBounds(cell))
+            if (!battlefield.Contains(point.Value))
             {
                 return Result<TargetContext>.Failure("Target cell is out of bounds.");
             }
 
-            var occupantId = map.GetOccupant(cell);
+            var occupantId = battlefield.GetOccupantAt(point.Value);
             var occupant = string.IsNullOrEmpty(occupantId) ? null : engine.GetCombatant(occupantId);
             if (occupant != null && !engine.IsAlive(occupantId))
             {
                 occupant = null;
             }
 
-            return Result<TargetContext>.Success(new TargetContext(occupant, cell));
+            return Result<TargetContext>.Success(new TargetContext(occupant, point.Value));
         }
 
         private static AbilityDef FindAbility(CombatantRef caster, string abilityId)
@@ -308,29 +322,16 @@ namespace Tower.Core
                 ability => ability != null && StringComparer.Ordinal.Equals(ability.Id, abilityId));
         }
 
-        private GridPos? FindOccupant(string unitId)
-        {
-            foreach (var position in map.Positions)
-            {
-                if (StringComparer.Ordinal.Equals(map.GetOccupant(position), unitId))
-                {
-                    return position;
-                }
-            }
-
-            return null;
-        }
-
         private readonly struct TargetContext
         {
-            public TargetContext(CombatantRef unit, GridPos position)
+            public TargetContext(CombatantRef unit, BattlePos position)
             {
                 Unit = unit;
                 Position = position;
             }
 
             public CombatantRef Unit { get; }
-            public GridPos Position { get; }
+            public BattlePos Position { get; }
         }
     }
 }

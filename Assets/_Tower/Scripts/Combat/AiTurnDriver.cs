@@ -18,9 +18,10 @@ namespace Tower.Combat
                 return new SkipTurnCommand(activeUnitId);
             }
 
-            if (turn.RemainingMovement > 0 && Random.NextDouble() < 0.5)
+            var movementBudget = (int)turn.RemainingMovement;
+            if (movementBudget > 0 && Random.NextDouble() < 0.5)
             {
-                int distance = Math.Min(turn.RemainingMovement, Random.Next(0, turn.RemainingMovement + 1));
+                int distance = Math.Min(movementBudget, Random.Next(0, movementBudget + 1));
                 return new MoveCommand(activeUnitId, distance);
             }
 

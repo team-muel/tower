@@ -14,7 +14,7 @@ namespace Tower.Core
         public TurnPresentationEvent(
             TurnPresentationEventType type,
             string unitId,
-            int moveDistance = 0,
+            float moveDistance = 0f,
             string abilityId = null,
             string targetUnitId = null)
         {
@@ -27,7 +27,7 @@ namespace Tower.Core
 
         public TurnPresentationEventType Type { get; }
         public string UnitId { get; }
-        public int MoveDistance { get; }
+        public float MoveDistance { get; }
         public string AbilityId { get; }
         public string TargetUnitId { get; }
     }

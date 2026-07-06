@@ -28,6 +28,7 @@ namespace Tower.Tests.EditMode
                     activeUnitId = "regressor",
                     remainingOrders = 1,
                     commandMode = true,
+                    spaceMode = "Analog",
                     initiativeOrder = new List<string> { "regressor", "enemy-1-0" },
                     units = new List<QaUnitSnapshot>
                     {
@@ -75,7 +76,7 @@ namespace Tower.Tests.EditMode
 
             const string expected =
                 "{\"sceneName\":\"Expedition\","
-                + "\"combat\":{\"round\":2,\"activeUnitId\":\"regressor\",\"remainingOrders\":1,\"commandMode\":true,"
+                + "\"combat\":{\"round\":2,\"activeUnitId\":\"regressor\",\"remainingOrders\":1,\"commandMode\":true,\"spaceMode\":\"Analog\","
                 + "\"initiativeOrder\":[\"regressor\",\"enemy-1-0\"],"
                 + "\"units\":["
                 + "{\"unitId\":\"regressor\",\"team\":\"Player\",\"currentHp\":18,\"maxHp\":24,\"alive\":true,\"x\":1,\"y\":2,\"marks\":[\"burn\"],\"pendingAbility\":\"strike\"},"
@@ -89,6 +90,7 @@ namespace Tower.Tests.EditMode
         }
 
         // T19: command mode defaults off and pending ability defaults empty.
+        // T20: space mode defaults to an empty string until combat fills it.
         [Test]
         public void ToJson_DefaultCombatSnapshot_WritesCommandModeFalse()
         {
@@ -101,6 +103,31 @@ namespace Tower.Tests.EditMode
             var json = QaStateSerializer.ToJson(snapshot);
 
             Assert.That(json, Does.Contain("\"commandMode\":false"));
+            Assert.That(json, Does.Contain("\"spaceMode\":\"\""));
+        }
+
+        // T20: analog mode reports continuous float unit coordinates.
+        [Test]
+        public void ToJson_AnalogUnitCoordinates_WriteFloats()
+        {
+            var snapshot = new QaStateSnapshot
+            {
+                sceneName = "Expedition",
+                combat = new QaCombatSnapshot
+                {
+                    round = 1,
+                    spaceMode = "Analog",
+                    units = new List<QaUnitSnapshot>
+                    {
+                        new QaUnitSnapshot { unitId = "regressor", x = 1.5f, y = 2.25f }
+                    }
+                }
+            };
+
+            var json = QaStateSerializer.ToJson(snapshot);
+
+            Assert.That(json, Does.Contain("\"spaceMode\":\"Analog\""));
+            Assert.That(json, Does.Contain("\"x\":1.5,\"y\":2.25"));
         }
 
         [Test]

@@ -37,6 +37,8 @@ namespace Tower.Core
             WriteString(builder, combat.activeUnitId);
             builder.Append(",\"remainingOrders\":").Append(combat.remainingOrders.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"commandMode\":").Append(combat.commandMode ? "true" : "false");
+            builder.Append(",\"spaceMode\":");
+            WriteString(builder, combat.spaceMode);
             builder.Append(",\"initiativeOrder\":");
             WriteStringArray(builder, combat.initiativeOrder);
             builder.Append(",\"units\":[");
@@ -69,8 +71,8 @@ namespace Tower.Core
             builder.Append(",\"currentHp\":").Append(unit.currentHp.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"maxHp\":").Append(unit.maxHp.ToString(CultureInfo.InvariantCulture));
             builder.Append(",\"alive\":").Append(unit.alive ? "true" : "false");
-            builder.Append(",\"x\":").Append(unit.x.ToString(CultureInfo.InvariantCulture));
-            builder.Append(",\"y\":").Append(unit.y.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"x\":").Append(unit.x.ToString("0.##", CultureInfo.InvariantCulture));
+            builder.Append(",\"y\":").Append(unit.y.ToString("0.##", CultureInfo.InvariantCulture));
             builder.Append(",\"marks\":");
             WriteStringArray(builder, unit.marks);
             builder.Append(",\"pendingAbility\":");

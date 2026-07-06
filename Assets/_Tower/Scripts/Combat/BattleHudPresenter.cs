@@ -33,7 +33,7 @@ namespace Tower.Combat
         {
             string message = presentationEvent.Type switch
             {
-                TurnPresentationEventType.Move => $"{presentationEvent.UnitId} moved {presentationEvent.MoveDistance}",
+                TurnPresentationEventType.Move => $"{presentationEvent.UnitId} moved {presentationEvent.MoveDistance:0.##}",
                 TurnPresentationEventType.Ability => $"{presentationEvent.UnitId} used {presentationEvent.AbilityId} -> {presentationEvent.TargetUnitId}",
                 TurnPresentationEventType.Skip => $"{presentationEvent.UnitId} skipped",
                 _ => $"{presentationEvent.UnitId} acted"

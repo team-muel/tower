@@ -8,6 +8,10 @@ namespace Tower.Core
     {
         public const int DefaultMovementPerTurn = 4;
 
+        // T20: movement budgets are floats now; the epsilon absorbs tiny
+        // euclidean rounding error from analog move costs.
+        private const float MovementEpsilon = 0.001f;
+
         private readonly Dictionary<string, CombatantRef> combatants;
         private readonly HashSet<string> defeatedUnitIds = new HashSet<string>();
         private readonly IActionPresenter presenter;
@@ -240,12 +244,12 @@ namespace Tower.Core
 
         private Result SubmitMove(MoveCommand command)
         {
-            if (command.Distance < 0)
+            if (command.Distance < 0f)
             {
                 return Result.Failure("Move distance cannot be negative.");
             }
 
-            if (command.Distance > CurrentTurn.RemainingMovement)
+            if (command.Distance > CurrentTurn.RemainingMovement + MovementEpsilon)
             {
                 return Result.Failure("Move distance exceeds remaining movement.");
             }
@@ -253,7 +257,7 @@ namespace Tower.Core
             Present(new TurnPresentationEvent(TurnPresentationEventType.Move, command.UnitId, command.Distance));
             CurrentTurn = new TurnState(
                 CurrentTurn.UnitId,
-                CurrentTurn.RemainingMovement - command.Distance,
+                Math.Max(0f, CurrentTurn.RemainingMovement - command.Distance),
                 CurrentTurn.HasAction);
             NotifyCommandCommitted(command);
             return Result.Success();

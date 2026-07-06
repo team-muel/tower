@@ -3,33 +3,29 @@ using System.Collections.Generic;
 
 namespace Tower.Core
 {
-    // T5 companion/enemy AI core: enumerates candidate turns (reachable cell x
-    // usable ability x valid target), scores each one against the actor's
-    // disposition weights, and returns the best plan. Ties break
+    // T5 companion/enemy AI core: enumerates candidate turns (reachable
+    // position x usable ability x valid target), scores each one against the
+    // actor's disposition weights, and returns the best plan. Ties break
     // deterministically: higher score, then action kind (Ability < Move <
     // Skip), then ability id, then target id, then destination (Y, then X).
     // Pure C#. Dispositions live in DispositionWeights data — the scorer has
     // no per-disposition branches.
+    // T20: all spatial queries (reachability, distance, adjacency, line of
+    // sight) go through IBattlefield; grid behaviour is preserved bit-exactly
+    // by GridBattlefieldAdapter, analog mode samples a fixed deterministic
+    // candidate set (see AnalogBattlefield.GetMoveCandidates).
     public sealed class ActionScorer
     {
-        private static readonly GridPos[] Directions =
-        {
-            new GridPos(1, 0),
-            new GridPos(-1, 0),
-            new GridPos(0, 1),
-            new GridPos(0, -1)
-        };
-
-        private readonly GridMap map;
+        private readonly IBattlefield battlefield;
         private readonly StatusBoard statusBoard;
         private readonly IReadOnlyDictionary<DispositionType, DispositionWeights> weightTable;
 
         private ActionScorer(
-            GridMap map,
+            IBattlefield battlefield,
             StatusBoard statusBoard,
             IReadOnlyDictionary<DispositionType, DispositionWeights> weightTable)
         {
-            this.map = map;
+            this.battlefield = battlefield;
             this.statusBoard = statusBoard;
             this.weightTable = weightTable;
         }
@@ -44,13 +40,26 @@ namespace Tower.Core
                 return Result<ActionScorer>.Failure("Grid map is required.");
             }
 
+            return Create(new GridBattlefieldAdapter(map), statusBoard, weightTable);
+        }
+
+        public static Result<ActionScorer> Create(
+            IBattlefield battlefield,
+            StatusBoard statusBoard,
+            IReadOnlyDictionary<DispositionType, DispositionWeights> weightTable = null)
+        {
+            if (battlefield == null)
+            {
+                return Result<ActionScorer>.Failure("Battlefield is required.");
+            }
+
             if (statusBoard == null)
             {
                 return Result<ActionScorer>.Failure("Status board is required.");
             }
 
             return Result<ActionScorer>.Success(
-                new ActionScorer(map, statusBoard, weightTable ?? DispositionWeights.CreateDefaultTable()));
+                new ActionScorer(battlefield, statusBoard, weightTable ?? DispositionWeights.CreateDefaultTable()));
         }
 
         public Result<AiPlan> ChooseAction(TurnEngine engine, string unitId)
@@ -84,7 +93,7 @@ namespace Tower.Core
                 return Result<AiPlan>.Failure("Unit is defeated.");
             }
 
-            var actorPosition = map.FindOccupant(unitId);
+            var actorPosition = battlefield.FindOccupant(unitId);
             if (!actorPosition.HasValue)
             {
                 return Result<AiPlan>.Failure("Unit is not on the grid.");
@@ -105,18 +114,18 @@ namespace Tower.Core
             var currentRound = engine.RoundNumber;
 
             var context = BuildContext(engine, actor);
-            var reachable = ComputeReachableCells(actorPosition.Value, movementBudget, unitId);
+            var candidates = battlefield.GetMoveCandidates(unitId, actorPosition.Value, movementBudget);
             var preferredRange = ComputePreferredRange(actor);
 
             AiPlan best = null;
-            foreach (var reached in reachable)
+            foreach (var candidate in candidates)
             {
-                var cell = reached.Key;
-                var moveDistance = reached.Value;
-                var positionScore = ScorePosition(cell, weights, preferredRange, context);
+                var position = candidate.Position;
+                var moveDistance = candidate.Cost;
+                var positionScore = ScorePosition(position, weights, preferredRange, context);
 
-                var repositionKind = moveDistance > 0 ? AiPlanKind.Move : AiPlanKind.Skip;
-                Consider(ref best, new AiPlan(repositionKind, cell, moveDistance, null, null, null, positionScore));
+                var repositionKind = moveDistance > 0f ? AiPlanKind.Move : AiPlanKind.Skip;
+                Consider(ref best, new AiPlan(repositionKind, position, moveDistance, null, null, null, positionScore));
 
                 if (!hasAction)
                 {
@@ -143,12 +152,12 @@ namespace Tower.Core
 
                     foreach (var target in EnumerateTargets(ability, context))
                     {
-                        if (GridDistance.Manhattan(cell, target.Position) > ability.Range)
+                        if (battlefield.Distance(position, target.Position) > ability.Range)
                         {
                             continue;
                         }
 
-                        if (!LineOfSight.IsClear(map, cell, target.Position))
+                        if (!battlefield.HasLineOfSight(position, target.Position))
                         {
                             continue;
                         }
@@ -156,11 +165,11 @@ namespace Tower.Core
                         var actionScore = ScoreAbilityUse(actor, ability, target.Unit, weights, currentRound, context);
                         Consider(ref best, new AiPlan(
                             AiPlanKind.Ability,
-                            cell,
+                            position,
                             moveDistance,
                             ability.Id,
                             target.Unit.UnitId,
-                            target.UseCellTarget ? target.Position : (GridPos?)null,
+                            target.UseCellTarget ? target.Position : (BattlePos?)null,
                             positionScore + actionScore));
                     }
                 }
@@ -186,7 +195,7 @@ namespace Tower.Core
                 }
 
                 var unit = engine.GetCombatant(id);
-                var position = map.FindOccupant(id);
+                var position = battlefield.FindOccupant(id);
                 if (unit == null || !position.HasValue)
                 {
                     continue;
@@ -212,7 +221,7 @@ namespace Tower.Core
 
         // Protect target: the living teammate (excluding the actor) with the
         // lowest current HP; ties break on unit id for determinism.
-        private static GridPos? FindProtectTargetPosition(List<UnitInfo> teammates, string actorUnitId)
+        private static BattlePos? FindProtectTargetPosition(List<UnitInfo> teammates, string actorUnitId)
         {
             UnitInfo? best = null;
             foreach (var mate in teammates)
@@ -272,39 +281,6 @@ namespace Tower.Core
             return null;
         }
 
-        // Breadth-first flood fill over enterable cells within the movement
-        // budget; values are path distances usable as MoveCommand distances.
-        private Dictionary<GridPos, int> ComputeReachableCells(GridPos start, int budget, string unitId)
-        {
-            var distances = new Dictionary<GridPos, int> { [start] = 0 };
-            var queue = new Queue<GridPos>();
-            queue.Enqueue(start);
-
-            while (queue.Count > 0)
-            {
-                var current = queue.Dequeue();
-                var distance = distances[current];
-                if (distance >= budget)
-                {
-                    continue;
-                }
-
-                foreach (var direction in Directions)
-                {
-                    var next = new GridPos(current.X + direction.X, current.Y + direction.Y);
-                    if (distances.ContainsKey(next) || !map.CanEnter(next, unitId))
-                    {
-                        continue;
-                    }
-
-                    distances[next] = distance + 1;
-                    queue.Enqueue(next);
-                }
-            }
-
-            return distances;
-        }
-
         // Preferred engagement distance: the longest range among the actor's
         // damaging abilities, falling back to any tagged ability, then melee.
         private static int ComputePreferredRange(CombatantRef actor)
@@ -329,18 +305,18 @@ namespace Tower.Core
             return preferred > 0 ? preferred : 1;
         }
 
-        private static float ScorePosition(GridPos cell, DispositionWeights weights, int preferredRange, TurnContext context)
+        private float ScorePosition(BattlePos position, DispositionWeights weights, int preferredRange, TurnContext context)
         {
             var score = 0f;
             if (context.Enemies.Count > 0)
             {
-                var nearest = int.MaxValue;
+                var nearest = float.MaxValue;
                 var adjacentEnemies = 0;
                 foreach (var enemy in context.Enemies)
                 {
-                    var distance = GridDistance.Manhattan(cell, enemy.Position);
+                    var distance = battlefield.Distance(position, enemy.Position);
                     nearest = Math.Min(nearest, distance);
-                    if (distance == 1)
+                    if (battlefield.AreAdjacent(position, enemy.Position))
                     {
                         adjacentEnemies++;
                     }
@@ -353,7 +329,7 @@ namespace Tower.Core
             if (context.ProtectTargetPosition.HasValue)
             {
                 score -= weights.AllyProtectionWeight
-                    * GridDistance.Manhattan(cell, context.ProtectTargetPosition.Value);
+                    * battlefield.Distance(position, context.ProtectTargetPosition.Value);
             }
 
             return score;
@@ -514,29 +490,29 @@ namespace Tower.Core
                 return targetComparison < 0;
             }
 
-            if (candidate.MoveDestination.Y != best.MoveDestination.Y)
+            if (candidate.MovePosition.Y != best.MovePosition.Y)
             {
-                return candidate.MoveDestination.Y < best.MoveDestination.Y;
+                return candidate.MovePosition.Y < best.MovePosition.Y;
             }
 
-            return candidate.MoveDestination.X < best.MoveDestination.X;
+            return candidate.MovePosition.X < best.MovePosition.X;
         }
 
         private readonly struct UnitInfo
         {
-            public UnitInfo(CombatantRef unit, GridPos position)
+            public UnitInfo(CombatantRef unit, BattlePos position)
             {
                 Unit = unit;
                 Position = position;
             }
 
             public CombatantRef Unit { get; }
-            public GridPos Position { get; }
+            public BattlePos Position { get; }
         }
 
         private readonly struct TargetCandidate
         {
-            public TargetCandidate(CombatantRef unit, GridPos position, bool useCellTarget)
+            public TargetCandidate(CombatantRef unit, BattlePos position, bool useCellTarget)
             {
                 Unit = unit;
                 Position = position;
@@ -544,7 +520,7 @@ namespace Tower.Core
             }
 
             public CombatantRef Unit { get; }
-            public GridPos Position { get; }
+            public BattlePos Position { get; }
             public bool UseCellTarget { get; }
         }
 
@@ -553,7 +529,7 @@ namespace Tower.Core
             public TurnContext(
                 List<UnitInfo> enemies,
                 List<UnitInfo> teammates,
-                GridPos? protectTargetPosition,
+                BattlePos? protectTargetPosition,
                 string nextActingAllyId)
             {
                 Enemies = enemies;
@@ -564,7 +540,7 @@ namespace Tower.Core
 
             public List<UnitInfo> Enemies { get; }
             public List<UnitInfo> Teammates { get; }
-            public GridPos? ProtectTargetPosition { get; }
+            public BattlePos? ProtectTargetPosition { get; }
             public string NextActingAllyId { get; }
         }
     }
