@@ -19,6 +19,7 @@ namespace Tower.Combat
         [SerializeField] private float _zoomStep = FixedIsoCameraMath.DefaultZoomStep;
         [SerializeField] private float _focusDamping = FixedIsoCameraMath.DefaultFocusDamping;
         [SerializeField] private float _fov = CameraTuning.DefaultFov;
+        [SerializeField] private CameraOcclusionFadeController _occlusionFade;
 
         private Transform _focusTarget;
         private Vector3 _focusPoint;
@@ -75,6 +76,8 @@ namespace Tower.Combat
         public void SetFocusTarget(Transform target)
         {
             _focusTarget = target;
+            EnsureOcclusionFade();
+            _occlusionFade.SetTarget(target);
             if (target != null)
             {
                 FocusWorld(target.position);
@@ -129,6 +132,8 @@ namespace Tower.Combat
             }
 
             _camera.orthographic = false;
+            EnsureOcclusionFade();
+            _occlusionFade.SetCamera(_camera);
         }
 
         private void ApplyTransform()
@@ -141,6 +146,18 @@ namespace Tower.Combat
             _camera.transform.localPosition = Vector3.zero;
             _camera.transform.localRotation = Quaternion.identity;
             _camera.fieldOfView = _fov;
+        }
+
+        private void EnsureOcclusionFade()
+        {
+            if (_occlusionFade == null)
+            {
+                _occlusionFade = GetComponent<CameraOcclusionFadeController>();
+                if (_occlusionFade == null)
+                {
+                    _occlusionFade = gameObject.AddComponent<CameraOcclusionFadeController>();
+                }
+            }
         }
     }
 }
