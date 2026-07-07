@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using Tower.Core;
 
 namespace Tower.Gen
@@ -20,44 +19,31 @@ namespace Tower.Gen
             int height = NextInclusive(random, parameters.RoomSizeRange.Min, parameters.RoomSizeRange.Max);
             GridMap battlefield = new GridMap(width, height);
 
-            FloorEncounter encounter = ComposeEncounter(parameters, node, width, height);
+            FloorEncounter encounter = ComposeEncounter(parameters, graph, node);
             return new FloorNodeContent(node.Id, battlefield, encounter);
         }
 
-        private static FloorEncounter ComposeEncounter(FloorGenParams parameters, FloorNode node, int width, int height)
+        private static FloorEncounter ComposeEncounter(FloorGenParams parameters, FloorGraph graph, FloorNode node)
         {
-            if (node.IsEntrance || node.Kind == RoomKind.Entrance || node.Kind == RoomKind.Camp)
-            {
-                return FloorEncounter.None();
-            }
+            EncounterBudget budget = parameters.EncounterBudgetTable.Resolve(
+                parameters.BiomeId.ToString(),
+                node.Kind.ToString());
 
-            if (node.IsBossRoom || node.Kind == RoomKind.Boss)
-            {
-                return new FloorEncounter(true, 1, new[] { new FloorEnemySlot(0, parameters.BossKindSlot) });
-            }
-
-            int sizeBonus = Math.Max(0, ((width * height) - 64) / 64);
-            int enemyCount = Clamp(1 + node.Depth + sizeBonus, 1, 5);
-            List<FloorEnemySlot> slots = new List<FloorEnemySlot>();
-            for (int i = 0; i < enemyCount; i++)
-            {
-                int slotIndex = (node.Id + node.Depth + width + height + i) % parameters.EnemyKindSlots.Count;
-                slots.Add(new FloorEnemySlot(i, parameters.EnemyKindSlots[slotIndex]));
-            }
-
-            return new FloorEncounter(false, enemyCount, slots);
+            return FloorEncounterComposer.Compose(
+                budget,
+                node.Kind,
+                graph.Seed,
+                node.Id,
+                node.Depth,
+                parameters.BiomeId,
+                parameters.EnemyKindSlots,
+                parameters.BossKindSlot,
+                parameters.EliteKindSlot);
         }
 
         private static int NextInclusive(Random random, int min, int max)
         {
             return random.Next(min, max + 1);
-        }
-
-        private static int Clamp(int value, int min, int max)
-        {
-            if (value < min) return min;
-            if (value > max) return max;
-            return value;
         }
 
         // FNV-1a 스타일 결정적 믹스(PortalAssigner/FloorEncounterComposer와 동일 계열).
