@@ -68,7 +68,7 @@ namespace Tower.UI
         private readonly CommandModeState commandMode = new CommandModeState();
         private CommandModeOverlay commandOverlay;
         private CombatJuicePresenter juicePresenter;
-        private OrbitCameraRig orbitRig;
+        private FixedIsoFollowCameraRig combatCameraRig;
         private string focusedUnitId;
         private Tower.Gen.FloorGraph currentLayout;
         private Tower.Gen.FloorGenParams currentGenParams;
@@ -558,10 +558,10 @@ namespace Tower.UI
             {
                 CreateCamera(new Vector3(0f, 0f, 0.8f));
             }
-            else if (orbitRig != null)
+            else if (combatCameraRig != null)
             {
-                orbitRig.FocusWorld(new Vector3(0f, 0f, 0.8f));
-                orbitRig.SetDistance(12.5f);
+                combatCameraRig.FocusWorld(new Vector3(0f, 0f, 0.8f));
+                combatCameraRig.SetDistance(12.5f);
             }
 
             foreach (var portal in explorationPortals)
@@ -868,7 +868,7 @@ namespace Tower.UI
                 AddLog,
                 tokens,
                 sceneCamera,
-                orbitRig,
+                combatCameraRig,
                 AbilityFeelCatalog.FromCombatants(combatants));
 
             statusBoard = new StatusBoard();
@@ -1928,8 +1928,8 @@ namespace Tower.UI
             juicePresenter = null;
         }
 
-        // T19: combat runs on the orbit rig; camp/exploration scenes keep the
-        // iso follow rig (the rigs coexist, one per scene mode).
+        // T33: combat runs on fixed iso follow; camp/exploration scenes keep
+        // the existing iso follow rig (one camera rig per scene mode).
         private void CreateCamera(Vector3 focusWorld)
         {
             var existingIso = FindFirstObjectByType<IsoCameraRig>();
@@ -1938,16 +1938,16 @@ namespace Tower.UI
                 Destroy(existingIso.gameObject);
             }
 
-            var existingOrbit = FindFirstObjectByType<OrbitCameraRig>();
-            if (existingOrbit != null)
+            var existingCombatRig = FindFirstObjectByType<FixedIsoFollowCameraRig>();
+            if (existingCombatRig != null)
             {
-                Destroy(existingOrbit.gameObject);
+                Destroy(existingCombatRig.gameObject);
             }
 
-            var cameraRigObject = new GameObject("Orbit Camera Rig");
-            orbitRig = cameraRigObject.AddComponent<OrbitCameraRig>();
-            orbitRig.FocusWorld(focusWorld);
-            sceneCamera = orbitRig.Camera;
+            var cameraRigObject = new GameObject("Fixed Iso Follow Camera Rig");
+            combatCameraRig = cameraRigObject.AddComponent<FixedIsoFollowCameraRig>();
+            combatCameraRig.FocusWorld(focusWorld);
+            sceneCamera = combatCameraRig.Camera;
             sceneCamera.clearFlags = CameraClearFlags.SolidColor;
             sceneCamera.backgroundColor = new Color(0.055f, 0.06f, 0.07f, 1f);
             focusedUnitId = null;
@@ -1975,11 +1975,11 @@ namespace Tower.UI
             commandOverlay = CommandModeOverlay.Create(engine, sceneCamera, allyTokens, AddLog);
         }
 
-        // T19: the orbit camera follows the active turn unit; when there is
-        // none (or it is gone) it falls back to the regressor.
+        // T33: the fixed iso camera follows the active turn unit; when there
+        // is none (or it is gone) it falls back to the regressor.
         private void UpdateCombatFocus()
         {
-            if (orbitRig == null || engine == null)
+            if (combatCameraRig == null || engine == null)
             {
                 return;
             }
@@ -1998,7 +1998,7 @@ namespace Tower.UI
             focusedUnitId = targetId;
             if (targetId != null)
             {
-                orbitRig.SetFocusTarget(tokens[targetId].transform);
+                combatCameraRig.SetFocusTarget(tokens[targetId].transform);
             }
         }
 
