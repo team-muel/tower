@@ -41,7 +41,7 @@ namespace Tower.DataSchema
         string Id,
         string DisplayName,
         AbilityTag Tag,
-        string? TargetMark,                 // ref Marks.Id; empty for None/Amplify
+        [NullString("")] string? TargetMark,                 // ref Marks.Id; empty for None/Amplify
         [Range(1, 99)] int Range,
         [Range(0, 99)] int Cost,
         [Range(0, 9999)] int BasePower,
@@ -58,7 +58,7 @@ namespace Tower.DataSchema
         [Range(0, 9999)] int Defense,
         [Range(0, 999)] int Speed,
         DispositionType Disposition,
-        string? Passive,                    // ref Passives.Id
+        [NullString("")] string? Passive,                    // ref Passives.Id
         string DefaultAbilities,            // ";"-joined ref Abilities.Id (slot order)
         bool IsReturner,
         bool ChainLocked,
@@ -73,7 +73,7 @@ namespace Tower.DataSchema
         ResourceScope ResourceScope,
         int Power,
         int StackMax,
-        string? Description);
+        [NullString("")] string? Description);
 
     // v0 placeholder — weighted probability table (Hades economy / encounter rolls).
     [StaticDataRecord("Tower_GameData", "DropTables")]
@@ -82,7 +82,7 @@ namespace Tower.DataSchema
         string EntryId,
         [Range(1, 100000)] int Weight,
         RewardType RewardType,
-        string? RefId,
+        [NullString("")] string? RefId,
         int MinDepth,
-        int MaxDepth);
+        [NullString("")] int? MaxDepth);   // blank = open-ended (loader maps to int.MaxValue)
 }
