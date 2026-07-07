@@ -31,11 +31,11 @@ This file is the repo-local gate for non-code assets. It does not replace the va
 
 | Asset folder or file | Source | License | Local use | Processing notes |
 |---|---|---|---|---|
-| `Assets/_Tower/Art/Textures/asphalt_01/` | Poly Haven `asphalt_01`, https://polyhaven.com/a/asphalt_01 | CC0, verified via https://polyhaven.com/license | Road/asphalt floor material for `_FloorPreview` and future Seoul-hill road modules | Imported JPG maps: albedo, AO, normal, roughness. Unity material `M_Asphalt_PH`. |
-| `Assets/_Tower/Art/Textures/gravel_floor_02/` | Poly Haven `gravel_floor_02`, https://polyhaven.com/a/gravel_floor_02 | CC0, verified via https://polyhaven.com/license | Dirt/gravel route material for `_FloorPreview` | Imported JPG maps: albedo, AO, normal, roughness. Unity material `M_Dirt_PH`. |
+| `Assets/_Tower/Art/Textures/asphalt_01/` | Poly Haven `asphalt_01`, https://polyhaven.com/a/asphalt_01 | CC0, verified via https://polyhaven.com/license | Road/asphalt floor material for `_FloorPreview` and future Seoul-hill road modules | Imported JPG maps: albedo, AO, normal, roughness. T37 generated `asphalt_01_mask.png` as R=0 metallic, G=AO, B=1 detail mask, A=1-roughness smoothness. Unity material `M_Asphalt_PH`. |
+| `Assets/_Tower/Art/Textures/gravel_floor_02/` | Poly Haven `gravel_floor_02`, https://polyhaven.com/a/gravel_floor_02 | CC0, verified via https://polyhaven.com/license | Dirt/gravel route material for `_FloorPreview` | Imported JPG maps: albedo, AO, normal, roughness. T37 generated `gravel_floor_02_mask.png` as R=0 metallic, G=AO, B=1 detail mask, A=1-roughness smoothness. Unity material `M_Dirt_PH`. |
 | `Assets/_Tower/Art/Textures/brick_moss_001/` | Poly Haven `brick_moss_001`, https://polyhaven.com/a/brick_moss_001 | CC0, verified via https://polyhaven.com/license | Mossy brick/concrete proxy for sensory lane smoke tests | Imported JPG maps: albedo, ARM, normal. Unity material `M_BrickMoss`. |
-| `Assets/_Tower/Art/M_Asphalt_PH.mat` | Derived Unity material | Project-authored derivative of Poly Haven source maps | Preview asphalt material | Keep paired with `asphalt_01` ledger row. |
-| `Assets/_Tower/Art/M_Dirt_PH.mat` | Derived Unity material | Project-authored derivative of Poly Haven source maps | Preview dirt/gravel material | Keep paired with `gravel_floor_02` ledger row. |
+| `Assets/_Tower/Art/M_Asphalt_PH.mat` | Derived Unity material | Project-authored derivative of Poly Haven source maps | Preview asphalt material | Keep paired with `asphalt_01` ledger row. T37 connects the generated mask to `_MetallicGlossMap` and `_OcclusionMap`. |
+| `Assets/_Tower/Art/M_Dirt_PH.mat` | Derived Unity material | Project-authored derivative of Poly Haven source maps | Preview dirt/gravel material | Keep paired with `gravel_floor_02` ledger row. T37 connects the generated mask to `_MetallicGlossMap` and `_OcclusionMap`. |
 | `Assets/_Tower/Art/Materials/M_BrickMoss.mat` | Derived Unity material | Project-authored derivative of Poly Haven source maps | Brick moss material | Keep paired with `brick_moss_001` ledger row. |
 
 ## Rejected Or Needs Human Review
