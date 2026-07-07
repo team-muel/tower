@@ -22,16 +22,13 @@ namespace Tower.Core
         private const float Epsilon = 0.0001f;
         private const float MinimumMoveCost = 0.001f;
 
-        // Fixed 8-direction sampling basis (45-degree steps, unit length).
-        private static readonly float[] DirectionX =
-        {
-            1f, 0.70710678f, 0f, -0.70710678f, -1f, -0.70710678f, 0f, 0.70710678f
-        };
-
-        private static readonly float[] DirectionY =
-        {
-            0f, 0.70710678f, 1f, 0.70710678f, 0f, -0.70710678f, -1f, -0.70710678f
-        };
+        // Analog move sampling (T-fix: kill the grid feel).
+        // The rosette gives coarse omnidirectional coverage; the per-occupant
+        // bearings give continuous approach/retreat lines toward real targets
+        // so units glide along true vectors instead of snapping to a compass
+        // lattice. 16 directions x 3 radii + 2 bearings per other occupant.
+        private const int RosetteDirections = 16;
+        private static readonly float[] RadiusFractions = { 1f, 0.66f, 0.33f };
 
         private readonly Dictionary<string, BattlePos> occupants = new Dictionary<string, BattlePos>(StringComparer.Ordinal);
         private readonly List<string> occupantOrder = new List<string>();
@@ -201,15 +198,17 @@ namespace Tower.Core
             return true;
         }
 
-        // T20 sampling contract: candidates are stay-put plus the 8 fixed
-        // 45-degree directions at two radii (full budget, half budget), each
-        // clamped by ClampMove — at most 17 points. The set is a fixed-order
-        // pure function of the battlefield state (no RNG), so AI planning is
-        // deterministic for a given state; a seeded angular jitter can be
-        // layered later without touching callers.
+        // T20/analog-fix sampling contract: candidates are stay-put plus a
+        // rosette (RosetteDirections directions at each RadiusFractions radius)
+        // plus, for every other occupant, a straight approach and retreat
+        // bearing along the true line to that occupant. Every candidate is
+        // clamped by ClampMove. The set is a fixed-order pure function of the
+        // battlefield state (no RNG), so AI planning stays deterministic for a
+        // given state; a seeded angular jitter can be layered later without
+        // touching callers.
         public IReadOnlyList<BattleMoveCandidate> GetMoveCandidates(string unitId, BattlePos from, float moveBudget)
         {
-            var candidates = new List<BattleMoveCandidate>(17)
+            var candidates = new List<BattleMoveCandidate>
             {
                 new BattleMoveCandidate(from, 0f)
             };
@@ -219,29 +218,66 @@ namespace Tower.Core
                 return candidates;
             }
 
-            for (var radiusIndex = 0; radiusIndex < 2; radiusIndex++)
+            // Rosette: omnidirectional coverage at several distances.
+            for (var radiusIndex = 0; radiusIndex < RadiusFractions.Length; radiusIndex++)
             {
-                var radius = radiusIndex == 0 ? moveBudget : moveBudget * 0.5f;
+                var radius = moveBudget * RadiusFractions[radiusIndex];
                 if (radius <= Epsilon)
                 {
                     continue;
                 }
 
-                for (var direction = 0; direction < DirectionX.Length; direction++)
+                for (var direction = 0; direction < RosetteDirections; direction++)
                 {
-                    var target = new BattlePos(
-                        from.X + (DirectionX[direction] * radius),
-                        from.Y + (DirectionY[direction] * radius));
-                    var destination = ClampMove(unitId, from, target, moveBudget);
-                    var cost = Distance(from, destination);
-                    if (cost > MinimumMoveCost)
-                    {
-                        candidates.Add(new BattleMoveCandidate(destination, cost));
-                    }
+                    var angle = (Math.PI * 2.0 * direction) / RosetteDirections;
+                    var dirX = (float)Math.Cos(angle);
+                    var dirY = (float)Math.Sin(angle);
+                    AddCandidate(candidates, unitId, from,
+                        new BattlePos(from.X + (dirX * radius), from.Y + (dirY * radius)), moveBudget);
                 }
             }
 
+            // Target-relative bearings: continuous approach/retreat toward every
+            // other occupant so movement follows real lines, not the lattice.
+            foreach (var otherId in occupantOrder)
+            {
+                if (StringComparer.Ordinal.Equals(otherId, unitId))
+                {
+                    continue;
+                }
+
+                var other = occupants[otherId];
+                var toX = other.X - from.X;
+                var toY = other.Y - from.Y;
+                var length = (float)Math.Sqrt((toX * toX) + (toY * toY));
+                if (length <= Epsilon)
+                {
+                    continue;
+                }
+
+                var unitX = toX / length;
+                var unitY = toY / length;
+
+                // Approach: straight at the occupant (ClampMove stops at contact).
+                AddCandidate(candidates, unitId, from,
+                    new BattlePos(from.X + (unitX * moveBudget), from.Y + (unitY * moveBudget)), moveBudget);
+
+                // Retreat: directly away from the occupant.
+                AddCandidate(candidates, unitId, from,
+                    new BattlePos(from.X - (unitX * moveBudget), from.Y - (unitY * moveBudget)), moveBudget);
+            }
+
             return candidates;
+        }
+
+        private void AddCandidate(List<BattleMoveCandidate> candidates, string unitId, BattlePos from, BattlePos target, float moveBudget)
+        {
+            var destination = ClampMove(unitId, from, target, moveBudget);
+            var cost = Distance(from, destination);
+            if (cost > MinimumMoveCost)
+            {
+                candidates.Add(new BattleMoveCandidate(destination, cost));
+            }
         }
 
         private bool IsOpen(BattlePos pos, string movingUnitId)

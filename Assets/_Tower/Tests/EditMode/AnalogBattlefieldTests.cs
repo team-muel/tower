@@ -115,7 +115,7 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
-        public void GetMoveCandidates_SamplesStayPlusEightDirectionsAtTwoRadii()
+        public void GetMoveCandidates_SamplesStayPlusRosetteAtThreeRadii()
         {
             var battlefield = new AnalogBattlefield(20f, 20f);
             var from = new BattlePos(10f, 10f);
@@ -123,8 +123,8 @@ namespace Tower.Tests.EditMode
 
             var candidates = battlefield.GetMoveCandidates("a", from, 4f);
 
-            // Open field: stay + 8 directions x 2 radii = 17 candidates.
-            Assert.That(candidates.Count, Is.EqualTo(17));
+            // Open field, no other occupants: stay + 16 directions x 3 radii = 49.
+            Assert.That(candidates.Count, Is.EqualTo(49));
             Assert.That(candidates[0].Position, Is.EqualTo(from));
             Assert.That(candidates[0].Cost, Is.EqualTo(0f));
         }

@@ -1719,7 +1719,7 @@ namespace Tower.UI
                 var position = analogBattlefield.FindOccupant(pair.Key);
                 if (position.HasValue)
                 {
-                    pair.Value.PlaceAt(position.Value);
+                    pair.Value.MoveToAnalog(position.Value);
                     pair.Value.gameObject.SetActive(true);
                 }
                 else

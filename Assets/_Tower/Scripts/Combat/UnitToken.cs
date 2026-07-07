@@ -10,9 +10,15 @@ namespace Tower.Combat
         [SerializeField] private float _moveStepSeconds = 0.18f;
         [SerializeField] private float _heightOffset = 0.55f;
 
+        // Analog glide speed (analog units per second). A 4-unit move takes
+        // ~0.57s — snappy but clearly continuous, which is what stops combat
+        // from reading as grid-cell stepping.
+        [SerializeField] private float _analogUnitsPerSecond = 7f;
+
         private GridView _gridView;
         private AnalogBattlefieldView _analogView;
         private Coroutine _moveCoroutine;
+        private Coroutine _glideCoroutine;
         private IReadOnlyList<GridPos> _activePath;
 
         public string OccupantId { get; private set; }
@@ -98,6 +104,52 @@ namespace Tower.Combat
             BattlePosition = pos;
             Position = BattleScale.ToGridPos(pos);
             transform.position = GetWorldPosition(pos);
+        }
+
+        // Analog-fix: glide continuously to a new battlefield position instead
+        // of teleporting. The logical position mirrors the battlefield truth
+        // immediately (so repeated syncs during the glide are no-ops); only the
+        // transform interpolates, which is what makes movement read as free
+        // analog motion rather than grid stepping.
+        public void MoveToAnalog(BattlePos pos)
+        {
+            Vector3 startWorld = transform.position;
+            BattlePosition = pos;
+            Position = BattleScale.ToGridPos(pos);
+            Vector3 endWorld = GetWorldPosition(pos);
+
+            if ((endWorld - startWorld).sqrMagnitude <= 0.0004f)
+            {
+                transform.position = endWorld;
+                return;
+            }
+
+            if (_glideCoroutine != null)
+            {
+                StopCoroutine(_glideCoroutine);
+            }
+
+            _glideCoroutine = StartCoroutine(GlideRoutine(startWorld, endWorld));
+        }
+
+        private IEnumerator GlideRoutine(Vector3 fromWorld, Vector3 toWorld)
+        {
+            float distance = Vector3.Distance(fromWorld, toWorld);
+            float duration = _analogUnitsPerSecond <= 0f ? 0f : distance / _analogUnitsPerSecond;
+            float elapsed = 0f;
+
+            while (elapsed < duration)
+            {
+                elapsed += Time.deltaTime;
+                float t = duration <= 0f ? 1f : Mathf.Clamp01(elapsed / duration);
+                // Smoothstep easing for a less mechanical start/stop.
+                t = t * t * (3f - (2f * t));
+                transform.position = Vector3.Lerp(fromWorld, toWorld, t);
+                yield return null;
+            }
+
+            transform.position = toWorld;
+            _glideCoroutine = null;
         }
 
         public Coroutine MoveAlong(IReadOnlyList<GridPos> path)
