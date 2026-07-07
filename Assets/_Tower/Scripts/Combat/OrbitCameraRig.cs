@@ -30,6 +30,7 @@ namespace Tower.Combat
         private Vector3 _focusPoint;
         private Vector3 _focusGoal;
         private Vector3 _focusVelocity;
+        private Vector3 _presentationOffset;
         private bool _hasFocused;
 
         public Camera Camera
@@ -147,6 +148,12 @@ namespace Tower.Combat
             ApplyTransform();
         }
 
+        public void SetPresentationOffset(Vector3 offset)
+        {
+            _presentationOffset = offset;
+            ApplyTransform();
+        }
+
         private void EnsureCamera()
         {
             if (_camera == null)
@@ -168,7 +175,7 @@ namespace Tower.Combat
             EnsureCamera();
 
             var offset = OrbitCameraMath.ComputeOffset(_yaw, _pitch, _distance);
-            transform.position = _focusPoint + new Vector3(offset.X, offset.Y, offset.Z);
+            transform.position = _focusPoint + _presentationOffset + new Vector3(offset.X, offset.Y, offset.Z);
             transform.rotation = Quaternion.Euler(_pitch, _yaw, 0f);
             _camera.transform.localPosition = Vector3.zero;
             _camera.transform.localRotation = Quaternion.identity;

@@ -65,7 +65,7 @@ namespace Tower.UI
         private string lastOutcome = string.Empty;
         private readonly CommandModeState commandMode = new CommandModeState();
         private CommandModeOverlay commandOverlay;
-        private BattleHudPresenter hudPresenter;
+        private CombatJuicePresenter juicePresenter;
         private OrbitCameraRig orbitRig;
         private string focusedUnitId;
         private Tower.Gen.FloorLayout currentLayout;
@@ -133,7 +133,7 @@ namespace Tower.UI
                 if (Time.time >= nextAiStepTime)
                 {
                     RunAiTurn();
-                    nextAiStepTime = Time.time + (AiStepSeconds / (hudPresenter != null ? hudPresenter.PlaybackFactor : 1f));
+                    nextAiStepTime = Time.time + (AiStepSeconds / (juicePresenter != null ? juicePresenter.PlaybackFactor : 1f));
                 }
 
                 return;
@@ -818,22 +818,35 @@ namespace Tower.UI
                 combatants.Add(combatant.Value);
             }
 
+            var focusWorld = analog
+                ? analogView.ToWorld(new BattlePos(analogBattlefield.Width * 0.5f, analogBattlefield.Height * 0.5f))
+                : gridView.CellToWorld(new GridPos(map.Width / 2, map.Height / 2));
+            CreateCamera(focusWorld);
+
+            var presenterObject = new GameObject("Combat Juice Presenter");
+            juicePresenter = presenterObject.AddComponent<CombatJuicePresenter>();
+            juicePresenter.Initialize(
+                AddLog,
+                tokens,
+                sceneCamera,
+                orbitRig,
+                AbilityFeelCatalog.FromCombatants(combatants));
+
             statusBoard = new StatusBoard();
             var resolver = analog
-                ? AbilityResolver.Create(analogBattlefield, statusBoard)
-                : AbilityResolver.Create(map, statusBoard);
+                ? AbilityResolver.Create(analogBattlefield, statusBoard, juicePresenter)
+                : AbilityResolver.Create(map, statusBoard, juicePresenter);
             if (resolver.IsFailure)
             {
                 AddLog(resolver.Error);
                 return;
             }
 
-            var presenter = new BattleHudPresenter(AddLog);
-            hudPresenter = presenter;
             var engineResult = TurnEngine.Create(
                 combatants,
-                presenter,
+                juicePresenter,
                 resolver.Value,
+                juicePresenter,
                 allyOrderChain: party.Select(m => m.UnitId).ToList());
             if (engineResult.IsFailure)
             {
@@ -868,19 +881,15 @@ namespace Tower.UI
             if (analog)
             {
                 analogController = new AnalogPlayerTurnController(
-                    engine, analogBattlefield, analogView, orderBoard, ReturnerId, abilities, presenter);
+                    engine, analogBattlefield, analogView, orderBoard, ReturnerId, abilities, juicePresenter);
             }
             else
             {
                 var playerToken = tokens.TryGetValue(ReturnerId, out var tokenResult) ? tokenResult : null;
                 var enemyTokens = tokens.Values.Where(token => token.OccupantId.StartsWith("enemy-", StringComparison.Ordinal)).ToArray();
-                playerController = new PlayerTurnController(engine, gridView, highlighter, playerToken, enemyTokens, orderBoard, ReturnerId, abilities, presenter);
+                playerController = new PlayerTurnController(engine, gridView, highlighter, playerToken, enemyTokens, orderBoard, ReturnerId, abilities, juicePresenter);
             }
 
-            var focusWorld = analog
-                ? analogView.ToWorld(new BattlePos(analogBattlefield.Width * 0.5f, analogBattlefield.Height * 0.5f))
-                : gridView.CellToWorld(new GridPos(map.Width / 2, map.Height / 2));
-            CreateCamera(focusWorld);
             CreateCommandOverlay(party);
             RefreshAbilityButtons(abilities);
             RefreshStatus();
@@ -1551,7 +1560,12 @@ namespace Tower.UI
             engine = null;
             aiDriver = null;
             playerController = null;
-            hudPresenter = null;
+            if (juicePresenter != null)
+            {
+                Destroy(juicePresenter.gameObject);
+            }
+
+            juicePresenter = null;
         }
 
         // T19: combat runs on the orbit rig; camp/exploration scenes keep the
@@ -1643,9 +1657,9 @@ namespace Tower.UI
 
         private void OnCommandModeChanged()
         {
-            if (hudPresenter != null)
+            if (juicePresenter != null)
             {
-                hudPresenter.PlaybackFactor = commandMode.PlaybackFactor;
+                juicePresenter.PlaybackFactor = commandMode.PlaybackFactor;
             }
 
             if (commandOverlay != null)
@@ -1666,9 +1680,9 @@ namespace Tower.UI
         private void TearDownCommandMode()
         {
             commandMode.SyncCombatActive(false);
-            if (hudPresenter != null)
+            if (juicePresenter != null)
             {
-                hudPresenter.PlaybackFactor = 1f;
+                juicePresenter.PlaybackFactor = 1f;
             }
 
             if (commandOverlay != null)

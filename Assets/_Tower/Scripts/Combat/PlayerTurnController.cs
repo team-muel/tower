@@ -22,7 +22,7 @@ namespace Tower.Combat
         private readonly UnitToken playerToken;
         private readonly UnitToken[] orderedTokens;
         private readonly IReadOnlyList<AbilityDef> abilities;
-        private readonly BattleHudPresenter presenter;
+        private readonly ICombatModePresenter presenter;
         private readonly OrderBoard orderBoard;
         private readonly string playerId;
 
@@ -39,7 +39,7 @@ namespace Tower.Combat
             OrderBoard orderBoard,
             string playerId,
             IReadOnlyList<AbilityDef> abilities,
-            BattleHudPresenter presenter = null)
+            ICombatModePresenter presenter = null)
         {
             this.engine = engine;
             this.gridView = gridView;
