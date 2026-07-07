@@ -1,0 +1,4 @@
+id,displayName,effectHookKey
+P_Reckless,Reckless,passive.reckless
+P_Guardian,Guardian,passive.guardian
+P_Tempo,Tempo,passive.tempo
