@@ -102,6 +102,43 @@ namespace Tower.Core
             WriteString(builder, expedition.nextRoomPreview);
             builder.Append(",\"lastOutcome\":");
             WriteString(builder, expedition.lastOutcome);
+            builder.Append(",\"offeredPortals\":[");
+            var portals = expedition.offeredPortals ?? new List<QaPortalSnapshot>();
+            for (var index = 0; index < portals.Count; index++)
+            {
+                if (index > 0)
+                {
+                    builder.Append(',');
+                }
+
+                WritePortal(builder, portals[index]);
+            }
+
+            builder.Append(']');
+            builder.Append('}');
+        }
+
+        private static void WritePortal(StringBuilder builder, QaPortalSnapshot portal)
+        {
+            if (portal == null)
+            {
+                builder.Append("null");
+                return;
+            }
+
+            builder.Append("{\"doorIndex\":").Append(portal.doorIndex.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"toRoomId\":").Append(portal.toRoomId.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"toRoomKind\":");
+            WriteString(builder, portal.toRoomKind);
+            builder.Append(",\"rewardType\":");
+            WriteString(builder, portal.rewardType);
+            builder.Append(",\"rewardMagnitude\":").Append(portal.rewardMagnitude.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"riskTags\":");
+            WriteStringArray(builder, portal.riskTags);
+            builder.Append(",\"lockReason\":");
+            WriteString(builder, portal.lockReason);
+            builder.Append(",\"locked\":").Append(portal.locked ? "true" : "false");
+            builder.Append(",\"rerollAllowed\":").Append(portal.rerollAllowed ? "true" : "false");
             builder.Append('}');
         }
 
