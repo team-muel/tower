@@ -55,6 +55,23 @@ namespace Tower.Core
         public string phase = string.Empty;
         public string nextRoomPreview = string.Empty;
         public string lastOutcome = string.Empty;
+        // T25: portals offered by the current room's doors (reward type, risk
+        // tags, lock reason, reroll flag). Empty outside exploration.
+        public List<QaPortalSnapshot> offeredPortals = new List<QaPortalSnapshot>();
+    }
+
+    // T25: a single door's determined preview, surfaced for QA harnesses.
+    public sealed class QaPortalSnapshot
+    {
+        public int doorIndex;
+        public int toRoomId;
+        public string toRoomKind = string.Empty;
+        public string rewardType = string.Empty;
+        public int rewardMagnitude;
+        public List<string> riskTags = new List<string>();
+        public string lockReason = string.Empty;
+        public bool locked;
+        public bool rerollAllowed;
     }
 
     // Camp hub scene state: regressor ground position + active interaction zone.
