@@ -94,5 +94,17 @@ namespace Tower.Core
                 baseSpeed,
                 initiative);
         }
+
+        // Chain-locked members are excluded from the drag-to-reorder chain, so
+        // they get no order badge / initiative — the line says so instead.
+        public static string BuildMemberChainLockedStatsLine(string displayName, int maxHp, int baseSpeed)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "<color=#9E9E9E>🔒 {0} | HP {1} | 기본속도 {2} (순서 고정 — 연계 제외)</color>",
+                displayName,
+                maxHp,
+                baseSpeed);
+        }
     }
 }

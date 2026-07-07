@@ -11,15 +11,21 @@ namespace Tower.UI
     {
         private readonly Dictionary<string, Text> statsLines = new Dictionary<string, Text>();
         private readonly Dictionary<string, RectTransform> entryTransforms = new Dictionary<string, RectTransform>();
-        private readonly Dictionary<string, Button> upButtons = new Dictionary<string, Button>();
-        private readonly Dictionary<string, Button> downButtons = new Dictionary<string, Button>();
+        // Reverse map so we can read the chain order straight off the live
+        // sibling order after a drag reorders the rows.
+        private readonly Dictionary<RectTransform, string> rowToId = new Dictionary<RectTransform, string>();
         private readonly List<string> qaButtonNames = new List<string>();
         private TowerSliceContent content;
         private RuntimeTooltipView tooltip;
+        private RectTransform listContent;
         private Button startButton;
         private Button backButton;
         private Text departureStatus;
         private bool departing;
+
+        // Non-interactive order badges (①~④) — kept as labels only; the ▲▼
+        // buttons that used to drive them were replaced by drag-and-drop.
+        private static readonly string[] ChainSymbols = { "①", "②", "③", "④" };
 
         private void Start()
         {
@@ -66,11 +72,11 @@ namespace Tower.UI
             RuntimeSceneUi.AddText(
                 panel,
                 "Chain Hint",
-                "행동 순서를 정하고 출발 — 순서가 연계를 만든다 · 능력 위에 마우스를 올리면 상세 툴팁이 보입니다.",
+                "행동 순서를 <color=#FFC107>드래그</color>로 바꾼다 — 위로 끌수록 먼저 행동(이니셔티브 ↑) · 능력 위에 마우스를 올리면 상세 툴팁이 보입니다.",
                 14,
                 TextAnchor.MiddleCenter);
 
-            var listContent = CreatePartyScrollList(panel);
+            listContent = CreatePartyScrollList(panel);
             var chain = TowerSliceContent.GetLoadoutChain();
             foreach (var id in chain)
             {
@@ -134,9 +140,13 @@ namespace Tower.UI
         private void AddMemberEntry(Transform parent, string characterId)
         {
             var definition = content.Characters[characterId];
+            bool locked = definition.ChainLocked;
 
             var entryObject = new GameObject(characterId + " Entry");
             entryObject.transform.SetParent(parent, false);
+            // A raycast-target Image on the row root is both the visible card
+            // background and the drag surface (drag events from child text
+            // bubble up to this handler).
             entryObject.AddComponent<Image>().color = new Color(0.16f, 0.19f, 0.24f, 0.9f);
             var entryLayout = entryObject.AddComponent<VerticalLayoutGroup>();
             entryLayout.spacing = 4f;
@@ -146,7 +156,9 @@ namespace Tower.UI
             entryLayout.childControlHeight = true;
             entryLayout.childForceExpandHeight = false;
 
-            entryTransforms[characterId] = entryObject.GetComponent<RectTransform>();
+            var entryRect = entryObject.GetComponent<RectTransform>();
+            entryTransforms[characterId] = entryRect;
+            rowToId[entryRect] = characterId;
 
             statsLines[characterId] = RuntimeSceneUi.AddText(
                 entryObject.transform,
@@ -155,28 +167,27 @@ namespace Tower.UI
                 17,
                 TextAnchor.MiddleLeft);
 
-            var controls = new GameObject(characterId + " Chain Controls");
-            controls.transform.SetParent(entryObject.transform, false);
-            var controlsLayout = controls.AddComponent<HorizontalLayoutGroup>();
-            controlsLayout.spacing = 8f;
-            controlsLayout.childAlignment = TextAnchor.MiddleLeft;
-            controlsLayout.childControlWidth = true;
-            controlsLayout.childForceExpandWidth = false;
-            controlsLayout.childControlHeight = true;
-            controlsLayout.childForceExpandHeight = false;
-            controls.AddComponent<LayoutElement>().minHeight = 46f;
+            // Drag affordance / disabled-reason line (UX gate rule 2). Locked
+            // members are not draggable and say why; others get a grip hint.
+            var hint = RuntimeSceneUi.AddText(
+                entryObject.transform,
+                characterId + " Order Hint",
+                locked
+                    ? "<color=#9E9E9E>고정 — 순서를 바꿀 수 없습니다</color>"
+                    : "<color=#8899AA>⠿ 드래그해서 순서 변경</color>",
+                13,
+                TextAnchor.MiddleLeft);
+            hint.raycastTarget = false;
 
-            var up = RuntimeSceneUi.AddButton(controls.transform, "▲", () => MoveChain(characterId, -1));
-            up.gameObject.name = characterId + " Up Button";
-            up.GetComponent<LayoutElement>().minWidth = 110f;
-            RegisterQaButton(up);
-            upButtons[characterId] = up;
-
-            var down = RuntimeSceneUi.AddButton(controls.transform, "▼", () => MoveChain(characterId, 1));
-            down.gameObject.name = characterId + " Down Button";
-            down.GetComponent<LayoutElement>().minWidth = 110f;
-            RegisterQaButton(down);
-            downButtons[characterId] = down;
+            if (!locked)
+            {
+                var drag = entryObject.AddComponent<LoadoutRowDragHandler>();
+                drag.Configure(
+                    listContent,
+                    () => !departing,
+                    OnRowReorderPreview,
+                    CommitRowOrder);
+            }
 
             RuntimeSceneUi.AddText(entryObject.transform, characterId + " Slots Header", "능력 슬롯", 13, TextAnchor.MiddleLeft);
             foreach (var ability in definition.DefaultAbilities)
@@ -246,67 +257,110 @@ namespace Tower.UI
             return button;
         }
 
-        private void MoveChain(string characterId, int delta)
+        // Live feedback while a row is being dragged: rebuild the chain from the
+        // current sibling order and refresh the order badges / initiative, but
+        // do NOT re-set sibling indices (the drag owns them) and do NOT persist
+        // every frame.
+        private void OnRowReorderPreview()
         {
-            if (departing)
-            {
-                return;
-            }
-
-            var chain = TowerSliceContent.GetLoadoutChain();
-            int index = chain.IndexOf(characterId);
-            if (index < 0) return;
-
-            int targetIndex = index + delta;
-            if (targetIndex >= 0 && targetIndex < chain.Count)
-            {
-                string temp = chain[index];
-                chain[index] = chain[targetIndex];
-                chain[targetIndex] = temp;
-                TowerSliceContent.SetLoadoutChain(chain);
-                Refresh();
-            }
+            ApplyAssignments(ReadSiblingOrder());
         }
 
-        private static readonly string[] ChainSymbols = { "①", "②", "③", "④" };
-        private static readonly int[] InitiativeValues = { 100, 90, 80, 70 };
+        // Drag finished: commit the sibling order as the saved chain.
+        private void CommitRowOrder()
+        {
+            var order = ReadSiblingOrder();
+            TowerSliceContent.SetLoadoutChain(order);
+            ApplyAssignments(order);
+        }
 
+        private List<string> ReadSiblingOrder()
+        {
+            var order = new List<string>();
+            if (listContent == null)
+            {
+                return order;
+            }
+
+            for (int i = 0; i < listContent.childCount; i++)
+            {
+                var child = listContent.GetChild(i) as RectTransform;
+                if (child != null && rowToId.TryGetValue(child, out var id))
+                {
+                    order.Add(id);
+                }
+            }
+
+            return order;
+        }
+
+        private bool IsChainLocked(string id)
+        {
+            return content.Characters.TryGetValue(id, out var def) && def.ChainLocked;
+        }
+
+        // Full refresh: order the rows to match the saved chain, then apply the
+        // order badges / initiative and button states. Used on build and after
+        // departure; the per-frame drag path uses ApplyAssignments directly.
         private void Refresh()
         {
             var chain = TowerSliceContent.GetLoadoutChain();
 
             for (int i = 0; i < chain.Count; i++)
             {
-                var id = chain[i];
-                var definition = content.Characters[id];
-
-                var symbol = i < ChainSymbols.Length ? ChainSymbols[i] : "·";
-                var initiative = i < InitiativeValues.Length ? InitiativeValues[i] : 70;
-
-                if (statsLines.TryGetValue(id, out var text))
-                {
-                    text.text = AbilityDisplayText.BuildMemberChainStatsLine(
-                        definition.DisplayName,
-                        definition.MaxHp,
-                        definition.Speed,
-                        symbol,
-                        initiative);
-                }
-
-                if (entryTransforms.TryGetValue(id, out var rect))
+                if (entryTransforms.TryGetValue(chain[i], out var rect))
                 {
                     rect.SetSiblingIndex(i);
                 }
+            }
 
-                if (upButtons.TryGetValue(id, out var up))
+            ApplyAssignments(chain);
+
+            if (startButton != null)
+            {
+                startButton.interactable = !departing;
+            }
+
+            if (backButton != null)
+            {
+                backButton.interactable = !departing;
+            }
+        }
+
+        // Map an ordered id list to per-row order badges + initiative using the
+        // pure model, so locked members are excluded from the chain and the
+        // remaining members are numbered by their position among the unlocked.
+        private void ApplyAssignments(IReadOnlyList<string> order)
+        {
+            var assignments = LoadoutChainModel.BuildAssignments(order, IsChainLocked);
+            foreach (var a in assignments)
+            {
+                if (!statsLines.TryGetValue(a.Id, out var text))
                 {
-                    up.interactable = !departing && i > 0;
+                    continue;
                 }
 
-                if (downButtons.TryGetValue(id, out var down))
+                if (!content.Characters.TryGetValue(a.Id, out var definition))
                 {
-                    down.interactable = !departing && i < chain.Count - 1;
+                    continue;
                 }
+
+                if (a.ChainLocked)
+                {
+                    text.text = AbilityDisplayText.BuildMemberChainLockedStatsLine(
+                        definition.DisplayName,
+                        definition.MaxHp,
+                        definition.Speed);
+                    continue;
+                }
+
+                var symbol = a.ChainPosition < ChainSymbols.Length ? ChainSymbols[a.ChainPosition] : "·";
+                text.text = AbilityDisplayText.BuildMemberChainStatsLine(
+                    definition.DisplayName,
+                    definition.MaxHp,
+                    definition.Speed,
+                    symbol,
+                    a.Initiative);
             }
         }
 
