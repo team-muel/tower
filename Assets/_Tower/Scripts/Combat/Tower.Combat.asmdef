@@ -3,7 +3,8 @@
   "rootNamespace": "Tower.Combat",
   "references": [
     "Tower.Core",
-    "Tower.Gen"
+    "Tower.Gen",
+    "Unity.TextMeshPro"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

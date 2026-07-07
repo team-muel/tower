@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Tower.Combat
 {
     // v0 temporary presenter that logs turn events within the 5-second bound.
-    public sealed class BattleHudPresenter : IActionPresenter
+    public sealed class BattleHudPresenter : IActionPresenter, ICombatModePresenter
     {
         private readonly Action<string> logSink;
 

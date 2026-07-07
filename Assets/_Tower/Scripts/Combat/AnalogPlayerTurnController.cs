@@ -27,7 +27,7 @@ namespace Tower.Combat
         private readonly OrderBoard orderBoard;
         private readonly string playerId;
         private readonly IReadOnlyList<AbilityDef> abilities;
-        private readonly BattleHudPresenter presenter;
+        private readonly ICombatModePresenter presenter;
 
         private Mode currentMode = Mode.Idle;
         private int? selectedAbilitySlot;
@@ -39,7 +39,7 @@ namespace Tower.Combat
             OrderBoard orderBoard,
             string playerId,
             IReadOnlyList<AbilityDef> abilities,
-            BattleHudPresenter presenter = null)
+            ICombatModePresenter presenter = null)
         {
             this.engine = engine;
             this.battlefield = battlefield;
