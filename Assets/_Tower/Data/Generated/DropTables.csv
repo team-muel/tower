@@ -1,0 +1,5 @@
+tableId,entryId,weight,rewardType,refId,minDepth,maxDepth
+DT_FloorReward,heal_small,40,Heal,,0,
+DT_FloorReward,resource,35,Resource,,0,
+DT_FloorReward,ability,15,Ability,,2,
+DT_FloorReward,shortcut,10,Shortcut,,3,

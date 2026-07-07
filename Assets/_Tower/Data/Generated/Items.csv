@@ -1,0 +1,3 @@
+id,displayName,resourceScope,power,stackMax,description
+I_Poultice,Poultice,Temporary,10,3,원정 중 HP 소폭 회복(예시)
+I_ShortcutKey,Shortcut Key,Permanent,0,1,숏컷 확보 토큰(예시)

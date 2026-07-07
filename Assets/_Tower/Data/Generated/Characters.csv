@@ -1,0 +1,5 @@
+id,displayName,maxHp,attack,defense,speed,disposition,passive,defaultAbilities,isReturner,chainLocked,isPreset,factionId
+C_Returner,Returner,34,8,5,11,Protective,P_Tempo,A_QuickSlash;A_FrostBolt,true,false,false,0
+C_EmberVanguard,Ember Vanguard,38,10,6,8,Aggressive,P_Reckless,A_BurningBrand;A_ThermalBreak,false,false,false,0
+C_GlassBreaker,Glass Breaker,28,12,3,12,Aggressive,P_Tempo,A_FocusStrike;A_ShatterFrost,false,false,false,0
+C_WardBearer,Ward Bearer,44,6,9,7,Protective,P_Guardian,A_HoldLine;A_GuardedSurge,false,false,false,0
