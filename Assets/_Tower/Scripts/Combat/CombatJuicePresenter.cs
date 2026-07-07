@@ -22,7 +22,7 @@ namespace Tower.Combat
         private IReadOnlyDictionary<string, UnitToken> tokens;
         private AbilityFeelCatalog catalog;
         private Camera sceneCamera;
-        private OrbitCameraRig orbitRig;
+        private FixedIsoFollowCameraRig cameraRig;
         private TurnEngine engine;
         private GameObject pendingMarker;
         private TextMeshPro pendingText;
@@ -38,13 +38,13 @@ namespace Tower.Combat
             Action<string> logSink,
             IReadOnlyDictionary<string, UnitToken> tokens,
             Camera sceneCamera,
-            OrbitCameraRig orbitRig,
+            FixedIsoFollowCameraRig cameraRig,
             AbilityFeelCatalog catalog)
         {
             this.logSink = logSink;
             this.tokens = tokens;
             this.sceneCamera = sceneCamera;
-            this.orbitRig = orbitRig;
+            this.cameraRig = cameraRig;
             this.catalog = catalog ?? AbilityFeelCatalog.Empty;
         }
 
@@ -109,9 +109,9 @@ namespace Tower.Combat
         {
             this.engine = engine;
             HidePendingTelegraph();
-            if (orbitRig != null)
+            if (cameraRig != null)
             {
-                orbitRig.SetPresentationOffset(Vector3.zero);
+                cameraRig.SetPresentationOffset(Vector3.zero);
             }
         }
 
@@ -122,7 +122,7 @@ namespace Tower.Combat
 
         private void LateUpdate()
         {
-            if (orbitRig == null)
+            if (cameraRig == null)
             {
                 return;
             }
@@ -130,7 +130,7 @@ namespace Tower.Combat
             if (Time.realtimeSinceStartup >= cameraShakeUntilRealtime || cameraShakeIntensity <= 0f)
             {
                 cameraShakeIntensity = 0f;
-                orbitRig.SetPresentationOffset(Vector3.zero);
+                cameraRig.SetPresentationOffset(Vector3.zero);
                 return;
             }
 
@@ -139,14 +139,14 @@ namespace Tower.Combat
                 Mathf.Sin(t) * cameraShakeIntensity,
                 Mathf.Sin(t * 1.37f) * cameraShakeIntensity * 0.45f,
                 Mathf.Cos(t * 1.11f) * cameraShakeIntensity);
-            orbitRig.SetPresentationOffset(offset);
+            cameraRig.SetPresentationOffset(offset);
         }
 
         private void OnDestroy()
         {
-            if (orbitRig != null)
+            if (cameraRig != null)
             {
-                orbitRig.SetPresentationOffset(Vector3.zero);
+                cameraRig.SetPresentationOffset(Vector3.zero);
             }
         }
 

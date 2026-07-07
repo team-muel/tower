@@ -8,8 +8,8 @@ namespace Tower.Combat
     // -devcam camera tuning mode: I/K pitch, +/- distance, [/] FOV. Current
     // values are drawn top-left; P dumps them to %TEMP%\tower-cam.json so a
     // tuned setup can be promoted into Tower.Core.CameraTuning defaults.
-    // T19: drives whichever rig the scene runs - the combat OrbitCameraRig
-    // takes precedence, otherwise the iso follow rig.
+    // T33: drives whichever rig the scene runs - the combat fixed-iso follow
+    // rig takes precedence, otherwise the camp/exploration iso follow rig.
     public sealed class CameraTuningModeController : MonoBehaviour
     {
         private const string DumpFileName = "tower-cam.json";
@@ -18,7 +18,7 @@ namespace Tower.Combat
         private const float FovDegreesPerSecond = 15f;
 
         private IsoCameraRig _isoRig;
-        private OrbitCameraRig _orbitRig;
+        private FixedIsoFollowCameraRig _fixedCombatRig;
         private string _lastDumpMessage = string.Empty;
 
         private void Update()
@@ -84,13 +84,13 @@ namespace Tower.Combat
 
         private void OnGUI()
         {
-            if (_orbitRig == null && _isoRig == null)
+            if (_fixedCombatRig == null && _isoRig == null)
             {
                 return;
             }
 
             var tuning = CurrentTuning();
-            var rigName = _orbitRig != null ? "orbit" : "iso";
+            var rigName = _fixedCombatRig != null ? "fixed-iso" : "iso";
             var text = string.Format(
                 CultureInfo.InvariantCulture,
                 "DevCam ({4})  pitch {0:0.#}  distance {1:0.#}  fov {2:0.#}  damping {3:0.##}\nI/K pitch  +/- distance  [/] fov  P dump\n{5}",
@@ -106,28 +106,28 @@ namespace Tower.Combat
         // Rigs are recreated per encounter; re-resolve whenever both refs die.
         private bool TryResolveRig()
         {
-            if (_orbitRig == null && _isoRig == null)
+            if (_fixedCombatRig == null && _isoRig == null)
             {
-                _orbitRig = FindFirstObjectByType<OrbitCameraRig>();
-                if (_orbitRig == null)
+                _fixedCombatRig = FindFirstObjectByType<FixedIsoFollowCameraRig>();
+                if (_fixedCombatRig == null)
                 {
                     _isoRig = FindFirstObjectByType<IsoCameraRig>();
                 }
             }
 
-            return _orbitRig != null || _isoRig != null;
+            return _fixedCombatRig != null || _isoRig != null;
         }
 
         private CameraTuningState CurrentTuning()
         {
-            return _orbitRig != null ? _orbitRig.Tuning : _isoRig.Tuning;
+            return _fixedCombatRig != null ? _fixedCombatRig.Tuning : _isoRig.Tuning;
         }
 
         private void ApplyTuning(CameraTuningState state)
         {
-            if (_orbitRig != null)
+            if (_fixedCombatRig != null)
             {
-                _orbitRig.ApplyTuning(state);
+                _fixedCombatRig.ApplyTuning(state);
             }
             else if (_isoRig != null)
             {
