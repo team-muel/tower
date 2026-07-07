@@ -109,7 +109,7 @@ namespace Tower.Tests.EditMode
             Assert.AreEqual(ResourceScope.Temporary, poultice.ResourceScope);
 
             var entries = catalog.GetDropTable("DT_FloorReward");
-            Assert.AreEqual(RewardType.Heal, entries[0].RewardType);
+            Assert.AreEqual(Tower.Data.RewardType.Heal, entries[0].RewardType);
             Assert.AreEqual(int.MaxValue, entries[0].MaxDepth, "blank maxDepth is open-ended");
         }
 
