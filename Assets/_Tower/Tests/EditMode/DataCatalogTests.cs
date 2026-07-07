@@ -208,5 +208,119 @@ namespace Tower.Tests.EditMode
             StringAssert.Contains("durationTurns", ex.Message);
             StringAssert.Contains("stackable", ex.Message);
         }
+
+        // ---- Items domain: code-model + load-validation parity ----
+        [Test]
+        public void Items_BadResourceScopeEnum_IsCaught()
+        {
+            var sheets = ValidSheets();
+            sheets[DataCatalog.ItemsSheet] =
+                "id,displayName,resourceScope,power,stackMax,description\n" +
+                "I_Poultice,Poultice,Eternal,10,3,heal a little\n"; // Eternal not a ResourceScope
+
+            var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
+            StringAssert.Contains("Items", ex.Message);
+            StringAssert.Contains("resourceScope", ex.Message);
+            StringAssert.Contains("Eternal", ex.Message);
+        }
+
+        [Test]
+        public void Items_EmptyRequired_IsCaught()
+        {
+            var sheets = ValidSheets();
+            sheets[DataCatalog.ItemsSheet] =
+                "id,displayName,resourceScope,power,stackMax,description\n" +
+                "I_Poultice,,Temporary,10,3,heal a little\n"; // empty required displayName
+
+            var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
+            StringAssert.Contains("Items", ex.Message);
+            StringAssert.Contains("displayName", ex.Message);
+        }
+
+        [Test]
+        public void Items_DuplicateId_IsCaught()
+        {
+            var sheets = ValidSheets();
+            sheets[DataCatalog.ItemsSheet] =
+                "id,displayName,resourceScope,power,stackMax,description\n" +
+                "I_Poultice,Poultice,Temporary,10,3,heal\n" +
+                "I_Poultice,PoulticeDup,Permanent,0,1,dup\n"; // duplicate id
+
+            var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
+            StringAssert.Contains("Items", ex.Message);
+            StringAssert.Contains("duplicate", ex.Message);
+        }
+
+        [Test]
+        public void Items_BadInt_IsCaught()
+        {
+            var sheets = ValidSheets();
+            sheets[DataCatalog.ItemsSheet] =
+                "id,displayName,resourceScope,power,stackMax,description\n" +
+                "I_Poultice,Poultice,Temporary,ten,3,heal\n"; // power not an int
+
+            var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
+            StringAssert.Contains("Items", ex.Message);
+            StringAssert.Contains("power", ex.Message);
+        }
+
+        // ---- DropTables.refId FK: Resource->Items, Ability->Abilities ----
+        [Test]
+        public void DropTable_BrokenResourceRefId_IsCaught()
+        {
+            var sheets = ValidSheets();
+            sheets[DataCatalog.DropTablesSheet] =
+                "tableId,entryId,weight,rewardType,refId,minDepth,maxDepth\n" +
+                "DT_FloorReward,resource,35,Resource,I_DoesNotExist,0,\n"; // unknown Item
+
+            var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
+            StringAssert.Contains("DropTables", ex.Message);
+            StringAssert.Contains("refId", ex.Message);
+            StringAssert.Contains("I_DoesNotExist", ex.Message);
+        }
+
+        [Test]
+        public void DropTable_BrokenAbilityRefId_IsCaught()
+        {
+            var sheets = ValidSheets();
+            sheets[DataCatalog.DropTablesSheet] =
+                "tableId,entryId,weight,rewardType,refId,minDepth,maxDepth\n" +
+                "DT_FloorReward,ability,15,Ability,A_DoesNotExist,2,\n"; // unknown Ability
+
+            var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
+            StringAssert.Contains("DropTables", ex.Message);
+            StringAssert.Contains("refId", ex.Message);
+            StringAssert.Contains("A_DoesNotExist", ex.Message);
+        }
+
+        [Test]
+        public void DropTable_ValidRefIds_Load()
+        {
+            var sheets = ValidSheets();
+            sheets[DataCatalog.DropTablesSheet] =
+                "tableId,entryId,weight,rewardType,refId,minDepth,maxDepth\n" +
+                "DT_FloorReward,resource,35,Resource,I_Poultice,0,\n" +
+                "DT_FloorReward,ability,15,Ability,A_FrostBolt,2,\n";
+
+            var catalog = DataCatalog.Load(sheets);
+            var entries = catalog.GetDropTable("DT_FloorReward");
+            Assert.AreEqual(2, entries.Count);
+            Assert.AreEqual("I_Poultice", entries[0].RefId);
+            Assert.AreEqual("A_FrostBolt", entries[1].RefId);
+        }
+
+        [Test]
+        public void DropTable_DuplicateEntryIdWithinTable_IsCaught()
+        {
+            var sheets = ValidSheets();
+            sheets[DataCatalog.DropTablesSheet] =
+                "tableId,entryId,weight,rewardType,refId,minDepth,maxDepth\n" +
+                "DT_FloorReward,resource,35,Resource,,0,\n" +
+                "DT_FloorReward,resource,10,Heal,,0,\n"; // duplicate entryId within table
+
+            var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
+            StringAssert.Contains("DropTables", ex.Message);
+            StringAssert.Contains("duplicate", ex.Message);
+        }
     }
 }

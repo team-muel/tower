@@ -68,7 +68,7 @@ namespace Tower.DataSchema
         [ColumnName("isPreset")] bool IsPreset,
         [ColumnName("factionId")] int FactionId);
 
-    // v0 placeholder — Item code model not yet implemented (align on impl).
+    // Item code model implemented in Tower.Data (ItemData + load-time validation).
     [StaticDataRecord("Tower_GameData", "Items")]
     public sealed record ItemRecord(
         [ColumnName("id")] string Id,
@@ -78,7 +78,8 @@ namespace Tower.DataSchema
         [ColumnName("stackMax")] int StackMax,
         [ColumnName("description")][NullString("")] string? Description);
 
-    // v0 placeholder — weighted probability table (Hades economy / encounter rolls).
+    // Weighted probability table (Hades economy / encounter rolls). refId FK
+    // (Resource->Items, Ability->Abilities) validated at load in Tower.Data.
     [StaticDataRecord("Tower_GameData", "DropTables")]
     public sealed record DropTableRecord(
         [ColumnName("tableId")] string TableId,

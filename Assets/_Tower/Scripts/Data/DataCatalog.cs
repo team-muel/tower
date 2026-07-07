@@ -147,6 +147,32 @@ namespace Tower.Data
                 }
             }
 
+            // DropTables.refId FK: Resource entries reference Items.id and
+            // Ability entries reference Abilities.id (empty refId ok — Heal/
+            // Shortcut carry no ref). Mirrors the other domains' FK checks.
+            foreach (var kv in dropTables)
+            {
+                var entries = kv.Value;
+                for (int e = 0; e < entries.Count; e++)
+                {
+                    var entry = entries[e];
+                    if (string.IsNullOrEmpty(entry.RefId)) continue;
+
+                    if (entry.RewardType == RewardType.Resource && !items.ContainsKey(entry.RefId))
+                    {
+                        errors.Add(Violation(DropTablesSheet,
+                            "tableId=" + entry.TableId + " entryId=" + entry.EntryId, "refId",
+                            "references unknown Item '" + entry.RefId + "'"));
+                    }
+                    else if (entry.RewardType == RewardType.Ability && !abilities.ContainsKey(entry.RefId))
+                    {
+                        errors.Add(Violation(DropTablesSheet,
+                            "tableId=" + entry.TableId + " entryId=" + entry.EntryId, "refId",
+                            "references unknown Ability '" + entry.RefId + "'"));
+                    }
+                }
+            }
+
             if (errors.Count > 0)
             {
                 throw new DataValidationException(BuildErrorMessage(errors));
