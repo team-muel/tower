@@ -4,27 +4,18 @@ using Tower.Core;
 
 namespace Tower.Gen
 {
-    // T25: deterministic door -> PortalDef assignment. Called when a room's
-    // doors open. Same (layout seed, room) always yields the same offer, so no
-    // RNG is exposed and clicking a door never re-rolls its preview.
+    // T25→T30: 결정적 node -> RouteOffer 배정(구 door -> PortalDef). 노드의 갈림길이
+    // 열릴 때 호출. 같은 (graph seed, node)는 항상 같은 offer → RNG 미노출, 재클릭
+    // 리롤 없음. 각 outgoing route(RouteEdge)마다 스카우트 프리뷰(RouteOption)를 만든다.
     //
-    // Priority (reduced Hades concept): ForceNext > Linked > EligiblePool.
-    //   ForceNext    - the from-room is the last combat room; the door forces
-    //                  the floor exit / boss.
-    //   Linked       - a real FloorEdge connects this door to a generated room;
-    //                  the candidate mirrors that room.
-    //   EligiblePool - no concrete link; fabricate a deterministic candidate
-    //                  from the eligible reward pool.
-    //
-    // Repetition suppression: within one room's offer, the same reward type is
-    // not handed out on two consecutive doors when an alternative exists.
+    // 우선순위(Hades 축약): Boss/Exit 목적 → Shortcut 보상. Camp → Heal.
+    //   그 외 → eligible 보상 풀에서 결정적 선택(연속 중복 억제).
     public static class PortalAssigner
     {
-        // How much deeper than the current room a candidate may reach before it
-        // is depth-gated (v0 keeps travel to the next depth band).
+        // 현재 노드보다 몇 depth band 더 깊이 닿을 수 있는지(초과 시 depth-gated).
         private const int MaxDepthReach = 1;
 
-        // v0 eligible reward pool, ordered so suppression walks a stable ring.
+        // eligible 보상 풀(억제가 안정적 링을 걷도록 순서 고정).
         private static readonly RewardType[] EligiblePool =
         {
             RewardType.Heal,
@@ -33,120 +24,84 @@ namespace Tower.Gen
             RewardType.Shortcut
         };
 
-        public static PortalOffer AssignForRoom(FloorLayout layout, FloorRoom room)
+        public static RouteOffer AssignForNode(FloorGraph graph, FloorNode node)
         {
-            if (layout == null)
+            if (graph == null)
             {
-                throw new ArgumentNullException(nameof(layout));
+                throw new ArgumentNullException(nameof(graph));
             }
 
-            if (room == null)
+            if (node == null)
             {
-                throw new ArgumentNullException(nameof(room));
+                throw new ArgumentNullException(nameof(node));
             }
 
-            if (room.Doors.Count == 0)
+            List<RouteEdge> outgoing = new List<RouteEdge>(graph.RoutesFrom(node.Id));
+            if (outgoing.Count == 0)
             {
-                return PortalOffer.Empty(room.Id);
+                return RouteOffer.Empty(node.Id);
             }
 
-            BiomeId biome = layout.BiomeTheme.Id;
-            List<PortalDef> portals = new List<PortalDef>(room.Doors.Count);
+            BiomeDef biomeDef = BiomeDef.For(graph.BiomeTheme.Id);
+            List<RouteOption> options = new List<RouteOption>(outgoing.Count);
             RewardType previousReward = RewardType.None;
-
-            for (int doorIndex = 0; doorIndex < room.Doors.Count; doorIndex++)
+            for (int index = 0; index < outgoing.Count; index++)
             {
-                FloorDoor door = room.Doors[doorIndex];
-                PortalDef portal = AssignForDoor(layout, room, door, doorIndex, biome, ref previousReward);
-                portals.Add(portal);
+                options.Add(AssignForRoute(graph, node, outgoing[index], index, biomeDef, ref previousReward));
             }
 
-            return new PortalOffer(room.Id, portals);
+            return new RouteOffer(node.Id, options);
         }
 
-        public static PortalDef AssignForDoor(
-            FloorLayout layout,
-            FloorRoom room,
-            FloorDoor door,
-            int doorIndex)
+        public static RouteOption AssignForRoute(FloorGraph graph, FloorNode node, RouteEdge route, int index)
         {
-            if (layout == null)
+            if (graph == null)
             {
-                throw new ArgumentNullException(nameof(layout));
+                throw new ArgumentNullException(nameof(graph));
             }
 
-            if (room == null)
+            if (node == null)
             {
-                throw new ArgumentNullException(nameof(room));
+                throw new ArgumentNullException(nameof(node));
             }
 
-            if (door == null)
+            if (route == null)
             {
-                throw new ArgumentNullException(nameof(door));
+                throw new ArgumentNullException(nameof(route));
             }
 
             RewardType ignored = RewardType.None;
-            return AssignForDoor(layout, room, door, doorIndex, layout.BiomeTheme.Id, ref ignored);
+            return AssignForRoute(graph, node, route, index, BiomeDef.For(graph.BiomeTheme.Id), ref ignored);
         }
 
-        private static PortalDef AssignForDoor(
-            FloorLayout layout,
-            FloorRoom room,
-            FloorDoor door,
-            int doorIndex,
-            BiomeId biome,
+        private static RouteOption AssignForRoute(
+            FloorGraph graph,
+            FloorNode node,
+            RouteEdge route,
+            int index,
+            BiomeDef biomeDef,
             ref RewardType previousReward)
         {
-            uint hash = Hash(layout.Seed, room.Id, room.Depth, doorIndex, (int)biome);
+            BiomeId biome = graph.BiomeTheme.Id;
+            uint hash = Hash(graph.Seed, node.Id, node.Depth, index, (int)biome, route.Id);
 
-            // --- toRoomCandidate via priority chain ---
-            FloorRoom linked = FindRoom(layout, door.ConnectedRoomId);
-            bool forceNext = IsForceNext(layout, room);
+            FloorNode toNode = graph.NodeById(route.ToNodeId);
+            RoomKind toKind = toNode != null ? toNode.Kind : RoomKind.Normal;
+            int toDepth = toNode != null ? toNode.Depth : node.Depth + 1;
 
-            int toRoomId;
-            RoomKind toKind;
-            int toDepth;
-            if (forceNext)
-            {
-                FloorRoom exit = FindRoom(layout, layout.ExitRoomId);
-                toRoomId = layout.ExitRoomId;
-                toKind = exit != null ? exit.Kind : RoomKind.Exit;
-                toDepth = exit != null ? exit.Depth : room.Depth + 1;
-            }
-            else if (linked != null)
-            {
-                toRoomId = linked.Id;
-                toKind = linked.Kind;
-                toDepth = linked.Depth;
-            }
-            else
-            {
-                // EligiblePool fallback: fabricate a deterministic candidate.
-                toRoomId = -1;
-                toKind = RoomKind.Normal;
-                toDepth = room.Depth + 1;
-            }
-
-            // --- rewardCandidate (type + magnitude) ---
             RewardType reward = PickReward(hash, toKind, previousReward);
             int magnitude = RewardMagnitude(reward, toDepth, hash);
             previousReward = reward;
 
-            // --- risk tags ---
-            PortalRisk risk = BuildRisk(layout, linked, toKind, reward);
-
-            // --- lock reason ---
-            PortalLockReason lockReason = BuildLockReason(room, toKind, toDepth, reward);
-
-            // --- reroll policy ---
+            PortalRisk risk = BuildRisk(graph, toKind, toDepth, reward, route.RouteType);
+            PortalLockReason lockReason = BuildLockReason(node, toKind, toDepth, reward);
             bool rerollAllowed = RerollAllowed(lockReason, reward);
+            bool scouted = (int)(hash % 100u) < biomeDef.ScoutRouteChance;
 
-            return new PortalDef(
-                room.Id,
-                doorIndex,
-                door.Side,
-                door.Side,
-                toRoomId,
+            return new RouteOption(
+                route.Id,
+                route.RouteType,
+                route.ToNodeId,
                 toKind,
                 biome,
                 toDepth,
@@ -154,39 +109,19 @@ namespace Tower.Gen
                 magnitude,
                 risk,
                 lockReason,
-                rerollAllowed);
-        }
-
-        private static bool IsForceNext(FloorLayout layout, FloorRoom room)
-        {
-            // The room is force-linked to the exit when one of its doors leads
-            // straight to the floor exit and the exit is a boss/exit payoff.
-            if (room.Id == layout.ExitRoomId)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < room.Doors.Count; i++)
-            {
-                if (room.Doors[i].ConnectedRoomId == layout.ExitRoomId)
-                {
-                    FloorRoom exit = FindRoom(layout, layout.ExitRoomId);
-                    return exit != null && (exit.IsBossRoom || exit.Kind == RoomKind.Boss);
-                }
-            }
-
-            return false;
+                rerollAllowed,
+                scouted);
         }
 
         private static RewardType PickReward(uint hash, RoomKind toKind, RewardType previousReward)
         {
-            // Boss/exit destinations always dangle the Shortcut payoff.
+            // Boss/Exit 목적은 항상 Shortcut 보상을 매단다.
             if (toKind == RoomKind.Boss || toKind == RoomKind.Exit)
             {
                 return RewardType.Shortcut;
             }
 
-            // Camps are the safe restorative branch.
+            // Camp는 안전 회복 갈래.
             if (toKind == RoomKind.Camp)
             {
                 return RewardType.Heal;
@@ -197,8 +132,7 @@ namespace Tower.Gen
             {
                 RewardType candidate = EligiblePool[(start + step) % EligiblePool.Length];
 
-                // Repetition suppression: skip a reward that repeats the
-                // previous door when another option exists.
+                // 연속 중복 억제: 대안이 있으면 직전과 같은 보상은 건너뛴다.
                 if (candidate == previousReward)
                 {
                     continue;
@@ -207,7 +141,6 @@ namespace Tower.Gen
                 return candidate;
             }
 
-            // All options collapsed onto previousReward (single-item pool).
             return EligiblePool[start];
         }
 
@@ -230,7 +163,7 @@ namespace Tower.Gen
             }
         }
 
-        private static PortalRisk BuildRisk(FloorLayout layout, FloorRoom linked, RoomKind toKind, RewardType reward)
+        private static PortalRisk BuildRisk(FloorGraph graph, RoomKind toKind, int toDepth, RewardType reward, RouteType routeType)
         {
             PortalRisk risk = PortalRisk.None;
 
@@ -239,25 +172,19 @@ namespace Tower.Gen
                 risk |= PortalRisk.Boss;
             }
 
-            if (linked != null && linked.Encounter != null)
+            // 깊은 일반 노드는 강적 위험을 신호한다(격자 조우가 노드에서 빠졌으므로 depth로 근사).
+            if (toKind == RoomKind.Normal && toDepth >= 3)
             {
-                if (linked.Encounter.IsBoss)
-                {
-                    risk |= PortalRisk.Boss;
-                }
-                else if (linked.Encounter.EnemyCount >= 3)
-                {
-                    risk |= PortalRisk.Elite;
-                }
+                risk |= PortalRisk.Elite;
             }
 
-            // Boss floors add a hazard flavour to their exit approach.
-            if (layout.IsBossFloor && toKind == RoomKind.Exit)
+            // 위험 route 또는 보스층 출구 접근은 hazard flavour.
+            if (routeType == RouteType.Hazard || (graph.IsBossFloor && toKind == RoomKind.Exit))
             {
                 risk |= PortalRisk.Hazard;
             }
 
-            // A shortcut behind a dangerous room is high stakes.
+            // 위험한 방 뒤의 shortcut은 하이스테이크.
             if (reward == RewardType.Shortcut && (risk & (PortalRisk.Boss | PortalRisk.Elite)) != PortalRisk.None)
             {
                 risk |= PortalRisk.HighStakes;
@@ -266,21 +193,21 @@ namespace Tower.Gen
             return risk;
         }
 
-        private static PortalLockReason BuildLockReason(FloorRoom room, RoomKind toKind, int toDepth, RewardType reward)
+        private static PortalLockReason BuildLockReason(FloorNode node, RoomKind toKind, int toDepth, RewardType reward)
         {
-            // Boss payoffs are boss-gated.
+            // Boss 보상은 boss-gated.
             if (toKind == RoomKind.Boss)
             {
                 return PortalLockReason.BossGated;
             }
 
-            // Travelling more than one depth band ahead is depth-gated.
-            if (toDepth - room.Depth > MaxDepthReach)
+            // 한 depth band 넘게 앞서가면 depth-gated.
+            if (toDepth - node.Depth > MaxDepthReach)
             {
                 return PortalLockReason.DepthGated;
             }
 
-            // Ability rewards require a key to claim in v0.
+            // Ability 보상은 v0에서 열쇠 필요.
             if (reward == RewardType.Ability)
             {
                 return PortalLockReason.RequiresKey;
@@ -291,7 +218,6 @@ namespace Tower.Gen
 
         private static bool RerollAllowed(PortalLockReason lockReason, RewardType reward)
         {
-            // Only unlocked, low-stakes restorative/resource offers may reroll.
             if (lockReason != PortalLockReason.None)
             {
                 return false;
@@ -300,36 +226,18 @@ namespace Tower.Gen
             return reward == RewardType.Heal || reward == RewardType.Resource;
         }
 
-        private static FloorRoom FindRoom(FloorLayout layout, int roomId)
-        {
-            if (roomId < 0)
-            {
-                return null;
-            }
-
-            for (int i = 0; i < layout.Rooms.Count; i++)
-            {
-                if (layout.Rooms[i].Id == roomId)
-                {
-                    return layout.Rooms[i];
-                }
-            }
-
-            return null;
-        }
-
-        // Deterministic FNV-1a style mix. Kept private so no RNG surface leaks
-        // from Tower.Gen (T25 hard constraint: seed-based, RNG not exposed).
-        private static uint Hash(int seed, int roomId, int depth, int doorIndex, int biome)
+        // 결정적 FNV-1a 스타일 믹스. RNG 미노출(T25/T30 하드 제약).
+        private static uint Hash(int seed, int nodeId, int depth, int index, int biome, int routeId)
         {
             unchecked
             {
                 uint hash = 2166136261u;
                 hash = (hash ^ (uint)seed) * 16777619u;
-                hash = (hash ^ (uint)roomId) * 16777619u;
+                hash = (hash ^ (uint)nodeId) * 16777619u;
                 hash = (hash ^ (uint)depth) * 16777619u;
-                hash = (hash ^ (uint)doorIndex) * 16777619u;
+                hash = (hash ^ (uint)index) * 16777619u;
                 hash = (hash ^ (uint)biome) * 16777619u;
+                hash = (hash ^ (uint)routeId) * 16777619u;
                 return hash;
             }
         }

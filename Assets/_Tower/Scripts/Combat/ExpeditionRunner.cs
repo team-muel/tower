@@ -8,10 +8,12 @@ using CoreAiTurnDriver = Tower.Core.AiTurnDriver;
 namespace Tower.Combat
 {
     // T8 macro-loop wiring: generates each floor with FloorGenerator, plays
-    // every encounter room with the T3/T4/T5 combat stack (TurnEngine +
+    // every encounter node with the T3/T4/T5 combat stack (TurnEngine +
     // AbilityResolver + ActionScorer/AiTurnDriver), then applies the
     // advance/retreat rules and persists checkpoints through SaveRepository.
-    // Pure C# — the demo bootstrap owns the MonoBehaviour side.
+    // T30: the floor is now a FloorGraph (node+route). Node battlefields and
+    // encounters are lazily bound through FloorNodeBinder (grid removed from
+    // the skeleton). Pure C# — the demo bootstrap owns the MonoBehaviour side.
     public sealed class ExpeditionRunner
     {
         // Safety valve for AI-vs-AI battles; a healthy encounter ends far
@@ -103,7 +105,7 @@ namespace Tower.Combat
         }
 
         // Plays the current floor end to end: shortcut gate, floor
-        // generation, every encounter room in depth order, then the
+        // generation, every encounter node in depth order, then the
         // advance/floor-clear (or retreat on a party wipe).
         public Result<ExpeditionProgress> PlayCurrentFloor()
         {
@@ -126,16 +128,18 @@ namespace Tower.Combat
             State = gated.Value;
 
             var seed = baseSeed + (State.StairwayIndex * 1000) + State.FloorIndex;
-            var layout = FloorGenerator.Generate(new FloorGenParams(seed, State.FloorIndex == State.FloorCount));
+            var genParams = new FloorGenParams(seed, State.FloorIndex == State.FloorCount);
+            var graph = FloorGenerator.Generate(genParams);
 
-            foreach (var room in layout.Rooms.OrderBy(candidate => candidate.Depth).ThenBy(candidate => candidate.Id))
+            foreach (var node in graph.Nodes.OrderBy(candidate => candidate.Depth).ThenBy(candidate => candidate.Id))
             {
-                if (!room.Encounter.HasEncounter)
+                var content = FloorNodeBinder.Bind(graph, node, genParams);
+                if (!content.Encounter.HasEncounter)
                 {
                     continue;
                 }
 
-                var encounter = RunEncounter(room);
+                var encounter = RunEncounter(content);
                 if (encounter.IsFailure)
                 {
                     return Result<ExpeditionProgress>.Failure(encounter.Error);
@@ -203,17 +207,17 @@ namespace Tower.Combat
             return Result.Success();
         }
 
-        // Plays one encounter room with AI on both sides and syncs the party
+        // Plays one encounter node with AI on both sides and syncs the party
         // states back into the expedition. Returns the winning team.
-        private Result<CombatTeam?> RunEncounter(FloorRoom room)
+        private Result<CombatTeam?> RunEncounter(FloorNodeContent content)
         {
-            var map = room.Map;
+            var map = content.Battlefield;
             var party = State.Roster.Where(member => !member.IsDead).ToList();
 
             var spawnCells = map.Positions.Where(position => map.CanEnter(position)).ToList();
-            if (spawnCells.Count < party.Count + room.Encounter.EnemyCount)
+            if (spawnCells.Count < party.Count + content.Encounter.EnemyCount)
             {
-                return Result<CombatTeam?>.Failure($"Room {room.Id} has too few open cells for the encounter.");
+                return Result<CombatTeam?>.Failure($"Node {content.NodeId} has too few open cells for the encounter.");
             }
 
             var combatants = new List<CombatantRef>();
@@ -222,7 +226,7 @@ namespace Tower.Combat
                 var member = party[index];
                 if (!map.TrySetOccupant(spawnCells[index], member.UnitId))
                 {
-                    return Result<CombatTeam?>.Failure($"Failed to place '{member.UnitId}' in room {room.Id}.");
+                    return Result<CombatTeam?>.Failure($"Failed to place '{member.UnitId}' in node {content.NodeId}.");
                 }
 
                 var combatant = CombatantRef.Create(member.UnitId, CombatTeam.Player, member.State);
@@ -234,20 +238,20 @@ namespace Tower.Combat
                 combatants.Add(combatant.Value);
             }
 
-            for (var index = 0; index < room.Encounter.EnemySlots.Count; index++)
+            for (var index = 0; index < content.Encounter.EnemySlots.Count; index++)
             {
-                var slot = room.Encounter.EnemySlots[index];
+                var slot = content.Encounter.EnemySlots[index];
                 var enemyState = enemyFactory.Create(slot.KindSlot, State.StairwayIndex, State.FloorIndex);
                 if (enemyState.IsFailure)
                 {
                     return Result<CombatTeam?>.Failure(enemyState.Error);
                 }
 
-                var unitId = $"enemy-r{room.Id}-{slot.Index}";
+                var unitId = $"enemy-r{content.NodeId}-{slot.Index}";
                 var cell = spawnCells[spawnCells.Count - 1 - index];
                 if (!map.TrySetOccupant(cell, unitId))
                 {
-                    return Result<CombatTeam?>.Failure($"Failed to place '{unitId}' in room {room.Id}.");
+                    return Result<CombatTeam?>.Failure($"Failed to place '{unitId}' in node {content.NodeId}.");
                 }
 
                 var combatant = CombatantRef.Create(unitId, CombatTeam.Enemy, enemyState.Value);
@@ -292,7 +296,7 @@ namespace Tower.Combat
             {
                 if (++turns > MaxTurnsPerEncounter)
                 {
-                    return Result<CombatTeam?>.Failure($"Encounter in room {room.Id} exceeded the turn cap.");
+                    return Result<CombatTeam?>.Failure($"Encounter in node {content.NodeId} exceeded the turn cap.");
                 }
 
                 var turn = driver.Value.TakeTurn();

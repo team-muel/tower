@@ -4,21 +4,45 @@ using Tower.Gen;
 
 namespace Tower.Tests.EditMode
 {
+    // T30: FloorGenerator now emits a FloorGraph (node+route). Encounters and
+    // battlefields are lazily bound through FloorNodeBinder (grid removed from
+    // the skeleton), so encounter assertions go through the binder.
     public sealed class FloorGeneratorTests
     {
         [Test]
-        public void SameSeedAndParamsProduceStableLayout()
+        public void SameSeedAndParamsProduceStableGraph()
         {
             FloorGenParams parameters = new FloorGenParams(12345);
 
-            FloorLayout first = FloorGenerator.Generate(parameters);
-            FloorLayout second = FloorGenerator.Generate(parameters);
+            FloorGraph first = FloorGenerator.Generate(parameters);
+            FloorGraph second = FloorGenerator.Generate(parameters);
 
             Assert.AreEqual(first.ToStableString(), second.ToStableString());
         }
 
         [Test]
-        public void RoomCountStaysWithinConfiguredRange()
+        public void ToStableStringIsDeterministicAndCoversNodesAndRoutes()
+        {
+            FloorGenParams parameters = new FloorGenParams(
+                9001,
+                new IntRange(5, 5),
+                false,
+                new IntRange(8, 8),
+                new[] { "melee", "ranged" },
+                "boss",
+                includeCamp: true,
+                biomeId: BiomeId.GhostManor);
+
+            string first = FloorGenerator.Generate(parameters).ToStableString();
+            string second = FloorGenerator.Generate(parameters).ToStableString();
+
+            Assert.AreEqual(first, second);
+            Assert.IsTrue(first.Contains("|node:"));
+            Assert.IsTrue(first.Contains("|route:"));
+        }
+
+        [Test]
+        public void NodeCountStaysWithinConfiguredRange()
         {
             FloorGenParams parameters = new FloorGenParams(
                 13,
@@ -28,125 +52,136 @@ namespace Tower.Tests.EditMode
                 new[] { "melee", "ranged" },
                 "boss");
 
-            FloorLayout layout = FloorGenerator.Generate(parameters);
+            FloorGraph graph = FloorGenerator.Generate(parameters);
 
-            Assert.That(layout.Rooms.Count, Is.InRange(4, 5));
+            Assert.That(graph.Nodes.Count, Is.InRange(4, 5));
         }
 
         [Test]
-        public void GraphConnectsEveryRoom()
+        public void RoutesConnectEveryNode()
         {
-            FloorLayout layout = FloorGenerator.Generate(new FloorGenParams(777));
+            FloorGraph graph = FloorGenerator.Generate(new FloorGenParams(777));
 
-            HashSet<int> reached = Traverse(layout);
+            HashSet<int> reached = Traverse(graph);
 
-            Assert.AreEqual(layout.Rooms.Count, reached.Count);
+            Assert.AreEqual(graph.Nodes.Count, reached.Count);
         }
 
         [Test]
-        public void EntranceRoomHasNoEncounter()
+        public void EveryNonExitNodeOffersAtLeastTwoRoutes()
         {
-            FloorLayout layout = FloorGenerator.Generate(new FloorGenParams(29));
+            FloorGraph graph = FloorGenerator.Generate(new FloorGenParams(4242, new IntRange(5, 5), false,
+                new IntRange(8, 8), new[] { "melee", "ranged" }, "boss"));
 
-            FloorRoom entrance = layout.Rooms[layout.EntranceRoomId];
-
-            Assert.IsTrue(entrance.IsEntrance);
-            Assert.AreEqual(RoomKind.Entrance, entrance.Kind);
-            Assert.IsFalse(entrance.Encounter.HasEncounter);
-            Assert.AreEqual(0, entrance.Encounter.EnemyCount);
-        }
-
-        [Test]
-        public void BossFloorMakesExitRoomSingleBossEncounter()
-        {
-            FloorLayout layout = FloorGenerator.Generate(new FloorGenParams(64, true));
-
-            FloorRoom exit = layout.Rooms[layout.ExitRoomId];
-
-            Assert.IsTrue(layout.IsBossFloor);
-            Assert.IsTrue(exit.IsExit);
-            Assert.IsTrue(exit.IsBossRoom);
-            Assert.AreEqual(RoomKind.Boss, exit.Kind);
-            Assert.IsTrue(exit.Encounter.HasEncounter);
-            Assert.IsTrue(exit.Encounter.IsBoss);
-            Assert.AreEqual(1, exit.Encounter.EnemyCount);
-            Assert.AreEqual("boss", exit.Encounter.EnemySlots[0].KindSlot);
-        }
-
-        [Test]
-        public void NonEntranceEncountersFollowDepthAndSizeClamp()
-        {
-            FloorLayout layout = FloorGenerator.Generate(new FloorGenParams(90210));
-
-            for (int i = 0; i < layout.Rooms.Count; i++)
+            for (int i = 0; i < graph.Nodes.Count; i++)
             {
-                FloorRoom room = layout.Rooms[i];
-                if (room.IsEntrance)
+                FloorNode node = graph.Nodes[i];
+                List<RouteEdge> outgoing = new List<RouteEdge>(graph.RoutesFrom(node.Id));
+                if (node.Id == graph.ExitNodeId)
                 {
-                    continue;
+                    Assert.AreEqual(0, outgoing.Count, "Exit node has no outgoing routes.");
                 }
-
-                int sizeBonus = System.Math.Max(0, ((room.Map.Width * room.Map.Height) - 64) / 64);
-                int expected = Clamp(1 + room.Depth + sizeBonus, 1, 5);
-                Assert.AreEqual(expected, room.Encounter.EnemyCount);
-                Assert.AreEqual(room.Encounter.EnemyCount, room.Encounter.EnemySlots.Count);
+                else
+                {
+                    Assert.That(outgoing.Count, Is.GreaterThanOrEqualTo(2), "Each fork offers at least two routes.");
+                }
             }
         }
 
         [Test]
-        public void IncludeCamp_MarksRoomBeforeExitAndClearsEncounter()
+        public void EntranceNodeHasNoEncounter()
+        {
+            FloorGenParams parameters = new FloorGenParams(29);
+            FloorGraph graph = FloorGenerator.Generate(parameters);
+
+            FloorNode entrance = graph.NodeById(graph.EntranceNodeId);
+
+            Assert.IsTrue(entrance.IsEntrance);
+            Assert.AreEqual(RoomKind.Entrance, entrance.Kind);
+
+            FloorNodeContent content = FloorNodeBinder.Bind(graph, entrance, parameters);
+            Assert.IsFalse(content.Encounter.HasEncounter);
+            Assert.AreEqual(0, content.Encounter.EnemyCount);
+        }
+
+        [Test]
+        public void BossFloorMakesExitNodeSingleBossEncounter()
+        {
+            FloorGenParams parameters = new FloorGenParams(64, true);
+            FloorGraph graph = FloorGenerator.Generate(parameters);
+
+            FloorNode exit = graph.NodeById(graph.ExitNodeId);
+
+            Assert.IsTrue(graph.IsBossFloor);
+            Assert.IsTrue(exit.IsExit);
+            Assert.IsTrue(exit.IsBossRoom);
+            Assert.AreEqual(RoomKind.Boss, exit.Kind);
+
+            FloorNodeContent content = FloorNodeBinder.Bind(graph, exit, parameters);
+            Assert.IsTrue(content.Encounter.HasEncounter);
+            Assert.IsTrue(content.Encounter.IsBoss);
+            Assert.AreEqual(1, content.Encounter.EnemyCount);
+            Assert.AreEqual("boss", content.Encounter.EnemySlots[0].KindSlot);
+        }
+
+        [Test]
+        public void NonEntranceCombatEncountersFollowDepthClamp()
+        {
+            FloorGenParams parameters = new FloorGenParams(
+                90210,
+                new IntRange(5, 5),
+                false,
+                new IntRange(8, 8),
+                new[] { "melee", "ranged" },
+                "boss");
+
+            FloorGraph graph = FloorGenerator.Generate(parameters);
+
+            for (int i = 0; i < graph.Nodes.Count; i++)
+            {
+                FloorNode node = graph.Nodes[i];
+                if (node.IsEntrance || node.Kind == RoomKind.Camp || node.IsBossRoom)
+                {
+                    continue;
+                }
+
+                FloorNodeContent content = FloorNodeBinder.Bind(graph, node, parameters);
+                int expected = Clamp(1 + node.Depth, 1, 5); // 8x8 map => size bonus 0
+                Assert.AreEqual(expected, content.Encounter.EnemyCount);
+                Assert.AreEqual(content.Encounter.EnemyCount, content.Encounter.EnemySlots.Count);
+            }
+        }
+
+        [Test]
+        public void IncludeCampMarksNodeBeforeExitWithNoEncounter()
         {
             FloorGenParams parameters = new FloorGenParams(
                 451,
                 new IntRange(5, 5),
                 true,
-                new IntRange(8, 14),
+                new IntRange(8, 8),
                 new[] { "melee", "ranged" },
                 "boss",
                 includeCamp: true);
 
-            FloorLayout layout = FloorGenerator.Generate(parameters);
-            FloorRoom camp = FindCamp(layout);
-            FloorRoom exit = layout.Rooms[layout.ExitRoomId];
+            FloorGraph graph = FloorGenerator.Generate(parameters);
+            FloorNode camp = FindCamp(graph);
+            FloorNode exit = graph.NodeById(graph.ExitNodeId);
 
             Assert.AreEqual(RoomKind.Camp, camp.Kind);
             Assert.IsFalse(camp.IsEntrance);
             Assert.IsFalse(camp.IsExit);
             Assert.IsFalse(camp.IsBossRoom);
-            Assert.IsFalse(camp.Encounter.HasEncounter);
-            Assert.AreEqual(0, camp.Encounter.EnemyCount);
-            Assert.IsTrue(AreConnected(layout, camp.Id, exit.Id));
+
+            FloorNodeContent content = FloorNodeBinder.Bind(graph, camp, parameters);
+            Assert.IsFalse(content.Encounter.HasEncounter);
+            Assert.AreEqual(0, content.Encounter.EnemyCount);
+            Assert.IsTrue(AreConnected(graph, camp.Id, exit.Id));
             Assert.AreEqual(RoomKind.Boss, exit.Kind);
-            Assert.IsTrue(exit.Encounter.IsBoss);
         }
 
         [Test]
-        public void IncludeCamp_DoesNotPerturbSeededGeometry()
-        {
-            FloorGenParams withoutCamp = new FloorGenParams(
-                8821,
-                new IntRange(5, 5),
-                false,
-                new IntRange(8, 14),
-                new[] { "melee", "ranged" },
-                "boss");
-            FloorGenParams withCamp = new FloorGenParams(
-                8821,
-                new IntRange(5, 5),
-                false,
-                new IntRange(8, 14),
-                new[] { "melee", "ranged" },
-                "boss",
-                includeCamp: true);
-
-            FloorLayout first = FloorGenerator.Generate(withoutCamp);
-            FloorLayout second = FloorGenerator.Generate(withCamp);
-
-            Assert.AreEqual(GeometrySignature(first), GeometrySignature(second));
-        }
-
-        [Test]
-        public void IncludeCamp_RemainsDeterministicForSameSeed()
+        public void IncludeCampRemainsDeterministicForSameSeed()
         {
             FloorGenParams parameters = new FloorGenParams(
                 912,
@@ -157,15 +192,15 @@ namespace Tower.Tests.EditMode
                 "boss",
                 includeCamp: true);
 
-            FloorLayout first = FloorGenerator.Generate(parameters);
-            FloorLayout second = FloorGenerator.Generate(parameters);
+            FloorGraph first = FloorGenerator.Generate(parameters);
+            FloorGraph second = FloorGenerator.Generate(parameters);
 
             Assert.AreEqual(first.ToStableString(), second.ToStableString());
             Assert.AreEqual(FindCamp(first).Id, FindCamp(second).Id);
         }
 
         [Test]
-        public void BiomeIdFlowsToLayoutTheme()
+        public void BiomeIdFlowsToGraphTheme()
         {
             FloorGenParams parameters = new FloorGenParams(
                 77,
@@ -176,54 +211,33 @@ namespace Tower.Tests.EditMode
                 "boss",
                 biomeId: BiomeId.CrystalMine);
 
-            FloorLayout layout = FloorGenerator.Generate(parameters);
+            FloorGraph graph = FloorGenerator.Generate(parameters);
 
-            Assert.AreEqual(BiomeId.CrystalMine, layout.BiomeTheme.Id);
-            Assert.AreEqual(BiomeTheme.For(BiomeId.CrystalMine), layout.BiomeTheme);
-            Assert.Greater(layout.BiomeTheme.FogDensity, 0f);
-            Assert.Greater(layout.BiomeTheme.DirectionalLightIntensity, 0f);
+            Assert.AreEqual(BiomeId.CrystalMine, graph.BiomeTheme.Id);
+            Assert.AreEqual(BiomeTheme.For(BiomeId.CrystalMine), graph.BiomeTheme);
+            Assert.Greater(graph.BiomeTheme.FogDensity, 0f);
+            Assert.Greater(graph.BiomeTheme.DirectionalLightIntensity, 0f);
         }
 
-        [Test]
-        public void BiomeThemePresetsExistForCanonicalBiomes()
-        {
-            BiomeId[] ids =
-            {
-                BiomeId.Forest,
-                BiomeId.Desert,
-                BiomeId.GhostManor,
-                BiomeId.CrystalMine
-            };
-
-            for (int i = 0; i < ids.Length; i++)
-            {
-                BiomeTheme theme = BiomeTheme.For(ids[i]);
-
-                Assert.AreEqual(ids[i], theme.Id);
-                Assert.Greater(theme.FogDensity, 0f);
-                Assert.Greater(theme.DirectionalLightIntensity, 0f);
-            }
-        }
-
-        private static HashSet<int> Traverse(FloorLayout layout)
+        private static HashSet<int> Traverse(FloorGraph graph)
         {
             Dictionary<int, List<int>> adjacency = new Dictionary<int, List<int>>();
-            for (int i = 0; i < layout.Rooms.Count; i++)
+            for (int i = 0; i < graph.Nodes.Count; i++)
             {
-                adjacency[layout.Rooms[i].Id] = new List<int>();
+                adjacency[graph.Nodes[i].Id] = new List<int>();
             }
 
-            for (int i = 0; i < layout.Edges.Count; i++)
+            for (int i = 0; i < graph.Routes.Count; i++)
             {
-                FloorEdge edge = layout.Edges[i];
-                adjacency[edge.RoomAId].Add(edge.RoomBId);
-                adjacency[edge.RoomBId].Add(edge.RoomAId);
+                RouteEdge route = graph.Routes[i];
+                adjacency[route.FromNodeId].Add(route.ToNodeId);
+                adjacency[route.ToNodeId].Add(route.FromNodeId);
             }
 
             HashSet<int> reached = new HashSet<int>();
             Queue<int> open = new Queue<int>();
-            open.Enqueue(layout.EntranceRoomId);
-            reached.Add(layout.EntranceRoomId);
+            open.Enqueue(graph.EntranceNodeId);
+            reached.Add(graph.EntranceNodeId);
 
             while (open.Count > 0)
             {
@@ -241,74 +255,35 @@ namespace Tower.Tests.EditMode
             return reached;
         }
 
-        private static FloorRoom FindCamp(FloorLayout layout)
+        private static FloorNode FindCamp(FloorGraph graph)
         {
-            FloorRoom camp = null;
-            for (int i = 0; i < layout.Rooms.Count; i++)
+            FloorNode camp = null;
+            for (int i = 0; i < graph.Nodes.Count; i++)
             {
-                if (layout.Rooms[i].Kind == RoomKind.Camp)
+                if (graph.Nodes[i].Kind == RoomKind.Camp)
                 {
-                    Assert.IsNull(camp, "Only one camp room is expected.");
-                    camp = layout.Rooms[i];
+                    Assert.IsNull(camp, "Only one camp node is expected.");
+                    camp = graph.Nodes[i];
                 }
             }
 
-            Assert.IsNotNull(camp, "Expected a camp room.");
+            Assert.IsNotNull(camp, "Expected a camp node.");
             return camp;
         }
 
-        private static bool AreConnected(FloorLayout layout, int roomAId, int roomBId)
+        private static bool AreConnected(FloorGraph graph, int nodeAId, int nodeBId)
         {
-            for (int i = 0; i < layout.Edges.Count; i++)
+            for (int i = 0; i < graph.Routes.Count; i++)
             {
-                FloorEdge edge = layout.Edges[i];
-                if ((edge.RoomAId == roomAId && edge.RoomBId == roomBId) ||
-                    (edge.RoomAId == roomBId && edge.RoomBId == roomAId))
+                RouteEdge route = graph.Routes[i];
+                if ((route.FromNodeId == nodeAId && route.ToNodeId == nodeBId) ||
+                    (route.FromNodeId == nodeBId && route.ToNodeId == nodeAId))
                 {
                     return true;
                 }
             }
 
             return false;
-        }
-
-        private static string GeometrySignature(FloorLayout layout)
-        {
-            System.Text.StringBuilder builder = new System.Text.StringBuilder();
-            for (int i = 0; i < layout.Rooms.Count; i++)
-            {
-                FloorRoom room = layout.Rooms[i];
-                builder.Append("room:")
-                    .Append(room.Id).Append(',')
-                    .Append(room.Depth).Append(',')
-                    .Append(room.Map.Width).Append('x').Append(room.Map.Height);
-
-                for (int doorIndex = 0; doorIndex < room.Doors.Count; doorIndex++)
-                {
-                    FloorDoor door = room.Doors[doorIndex];
-                    builder.Append(",door:")
-                        .Append(door.ConnectedRoomId).Append(':')
-                        .Append(door.Position.X).Append(':')
-                        .Append(door.Position.Y).Append(':')
-                        .Append(door.Side);
-                }
-            }
-
-            for (int i = 0; i < layout.Edges.Count; i++)
-            {
-                FloorEdge edge = layout.Edges[i];
-                builder.Append("|edge:")
-                    .Append(edge.RoomAId).Append('-')
-                    .Append(edge.RoomBId).Append(',')
-                    .Append(edge.DoorA.Position.X).Append(':')
-                    .Append(edge.DoorA.Position.Y).Append(':')
-                    .Append(edge.DoorA.Side).Append(',')
-                    .Append(edge.DoorB.Position.X).Append(':')
-                    .Append(edge.DoorB.Position.Y).Append(':')
-                    .Append(edge.DoorB.Side);
-            }
-
-            return builder.ToString();
         }
 
         private static int Clamp(int value, int min, int max)

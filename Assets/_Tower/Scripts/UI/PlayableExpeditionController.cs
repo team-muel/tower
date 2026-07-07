@@ -23,7 +23,8 @@ namespace Tower.UI
         private const float AiStepSeconds = 0.25f;
 
         private readonly Dictionary<string, UnitToken> tokens = new Dictionary<string, UnitToken>(StringComparer.Ordinal);
-        private readonly List<FloorRoom> encounterRooms = new List<FloorRoom>();
+        private readonly List<FloorNode> encounterRooms = new List<FloorNode>();
+        private readonly Dictionary<int, FloorNodeContent> nodeContents = new Dictionary<int, FloorNodeContent>();
         private readonly List<string> logLines = new List<string>();
         private readonly List<string> qaButtonNames = new List<string>();
         private readonly List<Button> doorButtons = new List<Button>();
@@ -69,13 +70,14 @@ namespace Tower.UI
         private CombatJuicePresenter juicePresenter;
         private OrbitCameraRig orbitRig;
         private string focusedUnitId;
-        private Tower.Gen.FloorLayout currentLayout;
+        private Tower.Gen.FloorGraph currentLayout;
+        private Tower.Gen.FloorGenParams currentGenParams;
         private GameObject dungeonMapOverlay;
         private bool isDungeonMapOpen;
         private GameObject explorationRoomRoot;
         private readonly List<ExplorationPortalAnchor> explorationPortals = new List<ExplorationPortalAnchor>();
         private ExplorationPortalAnchor hoveredPortal;
-        private PortalOffer currentPortalOffer;
+        private RouteOffer currentPortalOffer;
 
         private void Start()
         {
@@ -458,17 +460,20 @@ namespace Tower.UI
 
             state = gated.Value;
             var seed = BaseSeed + (state.StairwayIndex * 1000) + state.FloorIndex + UnityEngine.Random.Range(0, 997);
-            var layout = FloorGenerator.Generate(new FloorGenParams(seed, state.FloorIndex == state.FloorCount));
+            var genParams = new FloorGenParams(seed, state.FloorIndex == state.FloorCount);
+            var layout = FloorGenerator.Generate(genParams);
             currentLayout = layout;
+            currentGenParams = genParams;
             currentPortalOffer = null;
+            nodeContents.Clear();
             encounterRooms.Clear();
-            encounterRooms.AddRange(layout.Rooms
-                .Where(room => room.Encounter.HasEncounter)
-                .OrderBy(room => room.Depth)
-                .ThenBy(room => room.Id));
+            encounterRooms.AddRange(layout.Nodes
+                .Where(node => ContentFor(node).Encounter.HasEncounter)
+                .OrderBy(node => node.Depth)
+                .ThenBy(node => node.Id));
             encounterIndex = 0;
 
-            AddLog($"Entered stairway {state.StairwayIndex}, floor {state.FloorIndex}. Rooms: {layout.Rooms.Count}, encounters: {encounterRooms.Count}.");
+            AddLog($"Entered stairway {state.StairwayIndex}, floor {state.FloorIndex}. Nodes: {layout.Nodes.Count}, encounters: {encounterRooms.Count}.");
 
             // Ensure the 3D camera exists during exploration so the scene is
             // visible while selecting doors (instead of a black screen).
@@ -508,7 +513,7 @@ namespace Tower.UI
             ShowDoorButtons();
         }
 
-        private void BuildExplorationRoom(FloorRoom room)
+        private void BuildExplorationRoom(FloorNode room)
         {
             ClearExplorationRoom();
 
@@ -531,18 +536,18 @@ namespace Tower.UI
             }
 
             var offer = EnsurePortalOffer(room);
-            for (var doorIndex = 0; doorIndex < room.Doors.Count; doorIndex++)
+            for (var optionIndex = 0; optionIndex < offer.Count; optionIndex++)
             {
-                var door = room.Doors[doorIndex];
+                var option = offer.Options[optionIndex];
                 CreatePortal(
                     root,
-                    doorIndex,
-                    DoorQaLabel(door.Side),
-                    DoorDisplayLabel(door.Side),
+                    optionIndex,
+                    DoorQaLabel(optionIndex),
+                    DoorDisplayLabel(optionIndex),
                     room,
-                    offer.ForDoor(doorIndex),
-                    PortalPosition(door.Side, doorIndex),
-                    PortalRotation(door.Side));
+                    option,
+                    PortalPosition(optionIndex),
+                    PortalRotation(optionIndex));
             }
 
             CreateOrbCue(root, "Memory Orb Cue", new Vector3(-2.3f, 0.72f, -1.9f), new Color(0.42f, 0.82f, 1f, 1f), "기억 오브");
@@ -582,7 +587,7 @@ namespace Tower.UI
             return block;
         }
 
-        private void CreatePortal(Transform parent, int doorIndex, string qaLabel, string displayLabel, FloorRoom room, PortalDef portalDef, Vector3 position, Quaternion rotation)
+        private void CreatePortal(Transform parent, int doorIndex, string qaLabel, string displayLabel, FloorNode room, RouteOption option, Vector3 position, Quaternion rotation)
         {
             var portal = new GameObject(qaLabel + " Anchor");
             portal.transform.SetParent(parent, false);
@@ -593,10 +598,10 @@ namespace Tower.UI
             anchor.DoorIndex = doorIndex;
             anchor.QaLabel = qaLabel;
             anchor.DisplayLabel = displayLabel;
-            anchor.Portal = portalDef;
-            anchor.Preview = BuildPortalPreview(portalDef, room);
-            anchor.BaseColor = PortalColor(portalDef, false);
-            anchor.HoverColor = PortalColor(portalDef, true);
+            anchor.Route = option;
+            anchor.Preview = BuildPortalPreview(option, room);
+            anchor.BaseColor = PortalColor(option, false);
+            anchor.HoverColor = PortalColor(option, true);
             explorationPortals.Add(anchor);
 
             CreatePortalBlock(portal.transform, "Left Pillar", new Vector3(-0.72f, 0.78f, 0f), new Vector3(0.22f, 1.55f, 0.25f), anchor.BaseColor, anchor);
@@ -668,7 +673,7 @@ namespace Tower.UI
             textObject.AddComponent<FaceCamera>().Target = sceneCamera;
         }
 
-        private static Color PortalColor(PortalDef portal, bool hover)
+        private static Color PortalColor(RouteOption portal, bool hover)
         {
             if (portal != null && portal.IsLocked)
             {
@@ -720,7 +725,7 @@ namespace Tower.UI
                 }
 
                 AddLog($"{portal.DisplayLabel} 선택: {portal.Preview}");
-                EnterSelectedDoor(portal.Portal);
+                EnterSelectedDoor(portal.Route);
             }
         }
 
@@ -754,7 +759,7 @@ namespace Tower.UI
             }
         }
 
-        private void StartEncounter(FloorRoom room)
+        private void StartEncounter(FloorNode room)
         {
             currentPhase = "combat";
             awaitingNextFloor = false;
@@ -770,10 +775,11 @@ namespace Tower.UI
             // flag change cannot desync the battlefield and the view.
             spaceMode = CombatSpaceSettings.Mode;
             var analog = spaceMode == CombatSpaceMode.Analog;
-            var map = room.Map;
+            var nodeContent = ContentFor(room);
+            var map = nodeContent.Battlefield;
             var party = state.Roster.Where(member => !member.IsDead).ToList();
             var spawnCells = map.Positions.Where(position => map.CanEnter(position)).ToList();
-            if (spawnCells.Count < party.Count + room.Encounter.EnemyCount)
+            if (spawnCells.Count < party.Count + nodeContent.Encounter.EnemyCount)
             {
                 AddLog("Room has too few cells for combat.");
                 return;
@@ -820,9 +826,9 @@ namespace Tower.UI
             }
 
             var enemyFactory = new SliceEnemyFactory(content);
-            for (var index = 0; index < room.Encounter.EnemySlots.Count; index++)
+            for (var index = 0; index < nodeContent.Encounter.EnemySlots.Count; index++)
             {
-                var slot = room.Encounter.EnemySlots[index];
+                var slot = nodeContent.Encounter.EnemySlots[index];
                 var enemyState = enemyFactory.Create(slot.KindSlot, state.StairwayIndex, state.FloorIndex);
                 if (enemyState.IsFailure)
                 {
@@ -1490,7 +1496,7 @@ namespace Tower.UI
             EnterSelectedDoor(null);
         }
 
-        private void EnterSelectedDoor(PortalDef portal)
+        private void EnterSelectedDoor(RouteOption portal)
         {
             if (portal != null)
             {
@@ -1501,9 +1507,9 @@ namespace Tower.UI
                 }
 
                 lastOutcome = $"Portal reward: {portal.RewardType} x{portal.RewardMagnitude}";
-                if (portal.ToRoomId >= 0)
+                if (portal.ToNodeId >= 0)
                 {
-                    var destination = FindLayoutRoom(portal.ToRoomId);
+                    var destination = FindLayoutRoom(portal.ToNodeId);
                     if (destination != null)
                     {
                         EnterRoomFromPortal(destination);
@@ -1522,7 +1528,7 @@ namespace Tower.UI
             StartEncounter(room);
         }
 
-        private void EnterRoomFromPortal(FloorRoom room)
+        private void EnterRoomFromPortal(FloorNode room)
         {
             var encounterRoomIndex = FindEncounterIndex(room.Id);
             if (encounterRoomIndex >= 0)
@@ -1544,42 +1550,44 @@ namespace Tower.UI
             ShowDoorChoiceOrClearFloor();
         }
 
-        private string BuildRoomPreview(FloorRoom room)
+        private string BuildRoomPreview(FloorNode room)
         {
-            if (room == null)
-            {
-                return "출구";
-            }
-
-            if (room.Encounter.IsBoss)
-            {
-                return "보스";
-            }
-
-            if (room.Encounter.EnemyCount <= 0)
-            {
-                return "캠프";
-            }
-
-            return room.Encounter.EnemyCount >= 3 ? "강적" : "조우";
+            return BuildRoomPreviewStatic(room);
         }
 
-        private PortalOffer EnsurePortalOffer(FloorRoom room)
+        private RouteOffer EnsurePortalOffer(FloorNode room)
         {
             if (room == null)
             {
                 return null;
             }
 
-            if (currentPortalOffer != null && currentPortalOffer.RoomId == room.Id)
+            if (currentPortalOffer != null && currentPortalOffer.NodeId == room.Id)
             {
                 return currentPortalOffer;
             }
 
             currentPortalOffer = currentLayout == null
-                ? PortalOffer.Empty(room.Id)
-                : PortalAssigner.AssignForRoom(currentLayout, room);
+                ? RouteOffer.Empty(room.Id)
+                : PortalAssigner.AssignForNode(currentLayout, room);
             return currentPortalOffer;
+        }
+
+        private FloorNodeContent ContentFor(FloorNode node)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+
+            if (nodeContents.TryGetValue(node.Id, out var cached))
+            {
+                return cached;
+            }
+
+            var content = FloorNodeBinder.Bind(currentLayout, node, currentGenParams);
+            nodeContents[node.Id] = content;
+            return content;
         }
 
         private List<QaPortalSnapshot> BuildQaPortalSnapshots()
@@ -1590,14 +1598,14 @@ namespace Tower.UI
                 return snapshots;
             }
 
-            for (var index = 0; index < currentPortalOffer.Portals.Count; index++)
+            for (var index = 0; index < currentPortalOffer.Options.Count; index++)
             {
-                var portal = currentPortalOffer.Portals[index];
+                var portal = currentPortalOffer.Options[index];
                 var snapshot = new QaPortalSnapshot
                 {
-                    doorIndex = portal.DoorIndex,
-                    toRoomId = portal.ToRoomId,
-                    toRoomKind = portal.ToRoomKind.ToString(),
+                    doorIndex = index,
+                    toRoomId = portal.ToNodeId,
+                    toRoomKind = portal.ToKind.ToString(),
                     rewardType = portal.RewardType.ToString(),
                     rewardMagnitude = portal.RewardMagnitude,
                     lockReason = portal.LockReason.ToString(),
@@ -1623,17 +1631,17 @@ namespace Tower.UI
             }
         }
 
-        private static string BuildOfferPreview(PortalOffer offer, FloorRoom fallbackRoom)
+        private static string BuildOfferPreview(RouteOffer offer, FloorNode fallbackRoom)
         {
-            if (offer == null || offer.Portals.Count == 0)
+            if (offer == null || offer.Options.Count == 0)
             {
                 return BuildRoomPreviewStatic(fallbackRoom);
             }
 
-            return BuildPortalPreview(offer.Portals[0], fallbackRoom);
+            return BuildPortalPreview(offer.Options[0], fallbackRoom);
         }
 
-        private static string BuildPortalPreview(PortalDef portal, FloorRoom fallbackRoom)
+        private static string BuildPortalPreview(RouteOption portal, FloorNode fallbackRoom)
         {
             if (portal == null)
             {
@@ -1648,24 +1656,29 @@ namespace Tower.UI
             return "보상: " + RewardLabel(portal.RewardType) + " / 위험: " + RiskLabel(portal.RiskTags);
         }
 
-        private static string BuildRoomPreviewStatic(FloorRoom room)
+        private static string BuildRoomPreviewStatic(FloorNode room)
         {
             if (room == null)
             {
                 return "출구";
             }
 
-            if (room.Encounter.IsBoss)
+            if (room.IsBossRoom || room.Kind == RoomKind.Boss)
             {
                 return "보스";
             }
 
-            if (room.Encounter.EnemyCount <= 0)
+            if (room.Kind == RoomKind.Camp)
             {
                 return "캠프";
             }
 
-            return room.Encounter.EnemyCount >= 3 ? "강적" : "조우";
+            if (room.Kind == RoomKind.Exit)
+            {
+                return "출구";
+            }
+
+            return "조우";
         }
 
         private static string RewardLabel(RewardType reward)
@@ -1720,22 +1733,14 @@ namespace Tower.UI
             }
         }
 
-        private FloorRoom FindLayoutRoom(int roomId)
+        private FloorNode FindLayoutRoom(int roomId)
         {
             if (currentLayout == null)
             {
                 return null;
             }
 
-            for (var index = 0; index < currentLayout.Rooms.Count; index++)
-            {
-                if (currentLayout.Rooms[index].Id == roomId)
-                {
-                    return currentLayout.Rooms[index];
-                }
-            }
-
-            return null;
+            return currentLayout.NodeById(roomId);
         }
 
         private int FindEncounterIndex(int roomId)
@@ -1751,7 +1756,7 @@ namespace Tower.UI
             return -1;
         }
 
-        private int FindNextEncounterIndexAfter(FloorRoom room)
+        private int FindNextEncounterIndexAfter(FloorNode room)
         {
             for (var index = 0; index < encounterRooms.Count; index++)
             {
@@ -1765,68 +1770,60 @@ namespace Tower.UI
             return encounterRooms.Count;
         }
 
-        private static string DoorQaLabel(FloorDoorSide side)
+        private static string DoorQaLabel(int optionIndex)
         {
-            switch (side)
+            switch (optionIndex)
             {
-                case FloorDoorSide.North:
+                case 0:
                     return "North Door";
-                case FloorDoorSide.East:
+                case 1:
                     return "East Door";
-                case FloorDoorSide.South:
-                    return "South Door";
-                case FloorDoorSide.West:
+                case 2:
                     return "West Door";
                 default:
                     return "Door";
             }
         }
 
-        private static string DoorDisplayLabel(FloorDoorSide side)
+        private static string DoorDisplayLabel(int optionIndex)
         {
-            switch (side)
+            switch (optionIndex)
             {
-                case FloorDoorSide.North:
-                    return "북쪽 문";
-                case FloorDoorSide.East:
-                    return "동쪽 문";
-                case FloorDoorSide.South:
-                    return "남쪽 문";
-                case FloorDoorSide.West:
-                    return "서쪽 문";
+                case 0:
+                    return "갈림길 A";
+                case 1:
+                    return "갈림길 B";
+                case 2:
+                    return "갈림길 C";
                 default:
-                    return "문";
+                    return "갈림길";
             }
         }
 
-        private static Vector3 PortalPosition(FloorDoorSide side, int doorIndex)
+        private static Vector3 PortalPosition(int optionIndex)
         {
-            switch (side)
+            switch (optionIndex)
             {
-                case FloorDoorSide.North:
+                case 0:
                     return new Vector3(0f, 0f, 3.65f);
-                case FloorDoorSide.East:
+                case 1:
                     return new Vector3(3.75f, 0f, 1.05f);
-                case FloorDoorSide.South:
-                    return new Vector3(0f, 0f, -3.15f);
-                case FloorDoorSide.West:
+                case 2:
                     return new Vector3(-3.75f, 0f, 1.05f);
                 default:
-                    return new Vector3((doorIndex - 1) * 2f, 0f, 2f);
+                    return new Vector3((optionIndex - 1) * 2.4f, 0f, 3.4f);
             }
         }
 
-        private static Quaternion PortalRotation(FloorDoorSide side)
+        private static Quaternion PortalRotation(int optionIndex)
         {
-            switch (side)
+            switch (optionIndex)
             {
-                case FloorDoorSide.North:
+                case 0:
                     return Quaternion.Euler(0f, 180f, 0f);
-                case FloorDoorSide.East:
+                case 1:
                     return Quaternion.Euler(0f, -125f, 0f);
-                case FloorDoorSide.South:
-                    return Quaternion.Euler(0f, 0f, 0f);
-                case FloorDoorSide.West:
+                case 2:
                     return Quaternion.Euler(0f, 125f, 0f);
                 default:
                     return Quaternion.identity;
@@ -2246,7 +2243,7 @@ namespace Tower.UI
                 Destroy(child.gameObject);
             }
 
-            var rooms = currentLayout.Rooms;
+            var rooms = currentLayout.Nodes;
             if (rooms == null || rooms.Count == 0) return;
 
             int maxDepth = 0;
@@ -2256,12 +2253,12 @@ namespace Tower.UI
             }
             if (maxDepth == 0) maxDepth = 1;
 
-            var depthGroups = new Dictionary<int, List<Tower.Gen.FloorRoom>>();
+            var depthGroups = new Dictionary<int, List<Tower.Gen.FloorNode>>();
             foreach (var r in rooms)
             {
                 if (!depthGroups.ContainsKey(r.Depth))
                 {
-                    depthGroups[r.Depth] = new List<Tower.Gen.FloorRoom>();
+                    depthGroups[r.Depth] = new List<Tower.Gen.FloorNode>();
                 }
                 depthGroups[r.Depth].Add(r);
             }
@@ -2305,7 +2302,7 @@ namespace Tower.UI
                     new Vector2(normX + 0.06f, normY + 0.08f),
                     nodeColor);
 
-                string roomType = r.IsBossRoom ? "보스" : (r.IsEntrance ? "입구" : (r.IsExit ? "출구" : (r.Encounter.HasEncounter ? "조우" : "빈 방")));
+                string roomType = r.IsBossRoom ? "보스" : (r.IsEntrance ? "입구" : (r.IsExit ? "출구" : (r.Kind == RoomKind.Camp ? "캠프" : "조우")));
                 string currentLabel = "";
                 if (isCurrent)
                 {
@@ -2324,14 +2321,14 @@ namespace Tower.UI
             public string QaLabel;
             public string DisplayLabel;
             public string Preview;
-            public PortalDef Portal;
+            public RouteOption Route;
             public Color BaseColor;
             public Color HoverColor;
             public TextMesh Label;
 
             public bool IsLocked
             {
-                get { return Portal != null && Portal.IsLocked; }
+                get { return Route != null && Route.IsLocked; }
             }
 
             public void Register(Renderer renderer)

@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Generic;
-using Tower.Core;
+using System.Globalization;
 
 namespace Tower.Gen
 {
+    // 층계 골격 생성기(node+route 모델, 74 §6/§8). 격자 방·격자 문 생성은 폐기.
+    // 노드 스켈레톤(id/depth/kind/roomTemplateId/flags) + 갈림길(route) 종류를
+    // BiomeDef 가중으로 결정적으로 배정한다. 조우/전투 격자는 노드에 두지 않고
+    // FloorNodeBinder가 런타임에 lazy 바인딩한다(격자 제거).
     public static class FloorGenerator
     {
-        public static FloorLayout Generate(FloorGenParams parameters)
+        public static FloorGraph Generate(FloorGenParams parameters)
         {
             if (parameters == null)
             {
@@ -14,179 +18,89 @@ namespace Tower.Gen
             }
 
             Random random = new Random(parameters.Seed);
-            int roomCount = NextInclusive(random, parameters.RoomCountRange.Min, parameters.RoomCountRange.Max);
-            bool hasBranch = roomCount >= 4 && random.Next(0, 2) == 1;
-            int exitRoomId = roomCount - 1;
-            int branchRoomId = hasBranch ? roomCount - 2 : -1;
+            int nodeCount = NextInclusive(random, parameters.RoomCountRange.Min, parameters.RoomCountRange.Max);
+            int exitNodeId = nodeCount - 1;
+            int campNodeId = parameters.IncludeCamp ? exitNodeId - 1 : -1;
+            BiomeId biome = parameters.BiomeId;
 
-            GridMap[] maps = new GridMap[roomCount];
-            int[] depths = new int[roomCount];
-            List<FloorDoor>[] doors = new List<FloorDoor>[roomCount];
-
-            for (int i = 0; i < roomCount; i++)
-            {
-                int width = NextInclusive(random, parameters.RoomSizeRange.Min, parameters.RoomSizeRange.Max);
-                int height = NextInclusive(random, parameters.RoomSizeRange.Min, parameters.RoomSizeRange.Max);
-                maps[i] = new GridMap(width, height);
-                doors[i] = new List<FloorDoor>();
-            }
-
-            List<FloorEdge> edges = new List<FloorEdge>();
-            if (hasBranch)
-            {
-                BuildBranchedGraph(random, maps, depths, doors, edges, branchRoomId, exitRoomId);
-            }
-            else
-            {
-                BuildLinearGraph(random, maps, depths, doors, edges, exitRoomId);
-            }
-
-            int campRoomId = parameters.IncludeCamp ? FindRoomBeforeExit(edges, exitRoomId) : -1;
-            List<FloorRoom> rooms = new List<FloorRoom>();
-            for (int id = 0; id < roomCount; id++)
+            List<FloorNode> nodes = new List<FloorNode>(nodeCount);
+            for (int id = 0; id < nodeCount; id++)
             {
                 bool isEntrance = id == 0;
-                bool isExit = id == exitRoomId;
+                bool isExit = id == exitNodeId;
                 bool isBossRoom = parameters.IsBossFloor && isExit;
-                bool isCamp = id == campRoomId;
+                bool isCamp = id == campNodeId && !isEntrance && !isExit;
                 RoomKind kind = GetRoomKind(isEntrance, isExit, isBossRoom, isCamp);
-                FloorEncounter encounter = CreateEncounter(parameters, id, maps[id], depths[id], isEntrance, isBossRoom, isCamp);
-                rooms.Add(new FloorRoom(id, depths[id], maps[id], doors[id], encounter, isEntrance, isExit, isBossRoom, kind));
+                int depth = id;
+                string roomTemplateId = BuildTemplateId(biome, kind, id);
+                nodes.Add(new FloorNode(id, depth, kind, roomTemplateId, isEntrance, isExit, isBossRoom));
             }
 
-            return new FloorLayout(parameters.Seed, parameters.IsBossFloor, rooms, edges, 0, exitRoomId, BiomeTheme.For(parameters.BiomeId));
+            BiomeDef biomeDef = BiomeDef.For(biome);
+            List<RouteEdge> routes = new List<RouteEdge>();
+            int routeId = 0;
+            for (int id = 0; id < exitNodeId; id++)
+            {
+                // 갈림길: 같은 다음 노드로 향하는 두 갈래(안전 성향 / 위험 성향) — DD2 route 선택.
+                RouteType primary = PickRouteType(random, biomeDef);
+                routes.Add(new RouteEdge(routeId++, id, id + 1, primary));
+                RouteType alternate = PickRouteType(random, biomeDef);
+                routes.Add(new RouteEdge(routeId++, id, id + 1, alternate));
+            }
+
+            return new FloorGraph(
+                parameters.Seed,
+                parameters.IsBossFloor,
+                nodes,
+                routes,
+                0,
+                exitNodeId,
+                BiomeTheme.For(biome));
         }
 
-        private static void BuildLinearGraph(
-            Random random,
-            IReadOnlyList<GridMap> maps,
-            int[] depths,
-            List<FloorDoor>[] doors,
-            List<FloorEdge> edges,
-            int exitRoomId)
+        private static RouteType PickRouteType(Random random, BiomeDef biomeDef)
         {
-            for (int id = 0; id <= exitRoomId; id++)
+            int total = 0;
+            foreach (KeyValuePair<RouteType, int> pair in biomeDef.RouteWeights)
             {
-                depths[id] = id;
-            }
-
-            for (int id = 0; id < exitRoomId; id++)
-            {
-                AddEdge(random, maps, doors, edges, id, id + 1, FloorDoorSide.East, FloorDoorSide.West);
-            }
-        }
-
-        private static void BuildBranchedGraph(
-            Random random,
-            IReadOnlyList<GridMap> maps,
-            int[] depths,
-            List<FloorDoor>[] doors,
-            List<FloorEdge> edges,
-            int branchRoomId,
-            int exitRoomId)
-        {
-            int lastMainRoomBeforeExit = branchRoomId - 1;
-            for (int id = 0; id <= lastMainRoomBeforeExit; id++)
-            {
-                depths[id] = id;
-            }
-
-            depths[exitRoomId] = lastMainRoomBeforeExit + 1;
-
-            for (int id = 0; id < lastMainRoomBeforeExit; id++)
-            {
-                AddEdge(random, maps, doors, edges, id, id + 1, FloorDoorSide.East, FloorDoorSide.West);
-            }
-
-            AddEdge(random, maps, doors, edges, lastMainRoomBeforeExit, exitRoomId, FloorDoorSide.East, FloorDoorSide.West);
-
-            int branchFromRoomId = NextInclusive(random, 0, lastMainRoomBeforeExit);
-            depths[branchRoomId] = depths[branchFromRoomId] + 1;
-            AddEdge(random, maps, doors, edges, branchFromRoomId, branchRoomId, FloorDoorSide.South, FloorDoorSide.North);
-        }
-
-        private static void AddEdge(
-            Random random,
-            IReadOnlyList<GridMap> maps,
-            List<FloorDoor>[] doors,
-            List<FloorEdge> edges,
-            int roomAId,
-            int roomBId,
-            FloorDoorSide sideA,
-            FloorDoorSide sideB)
-        {
-            FloorDoor doorA = new FloorDoor(roomAId, roomBId, CreateDoorPosition(random, maps[roomAId], sideA), sideA);
-            FloorDoor doorB = new FloorDoor(roomBId, roomAId, CreateDoorPosition(random, maps[roomBId], sideB), sideB);
-            doors[roomAId].Add(doorA);
-            doors[roomBId].Add(doorB);
-            edges.Add(new FloorEdge(roomAId, roomBId, doorA, doorB));
-        }
-
-        private static GridPos CreateDoorPosition(Random random, GridMap map, FloorDoorSide side)
-        {
-            switch (side)
-            {
-                case FloorDoorSide.North:
-                    return new GridPos(NextInterior(random, map.Width), 0);
-                case FloorDoorSide.East:
-                    return new GridPos(map.Width - 1, NextInterior(random, map.Height));
-                case FloorDoorSide.South:
-                    return new GridPos(NextInterior(random, map.Width), map.Height - 1);
-                case FloorDoorSide.West:
-                    return new GridPos(0, NextInterior(random, map.Height));
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(side), side, "Unsupported door side.");
-            }
-        }
-
-        private static FloorEncounter CreateEncounter(
-            FloorGenParams parameters,
-            int roomId,
-            GridMap map,
-            int depth,
-            bool isEntrance,
-            bool isBossRoom,
-            bool isCamp)
-        {
-            if (isEntrance || isCamp)
-            {
-                return FloorEncounter.None();
-            }
-
-            if (isBossRoom)
-            {
-                return new FloorEncounter(true, 1, new[] { new FloorEnemySlot(0, parameters.BossKindSlot) });
-            }
-
-            int sizeBonus = Math.Max(0, ((map.Width * map.Height) - 64) / 64);
-            int enemyCount = Clamp(1 + depth + sizeBonus, 1, 5);
-            List<FloorEnemySlot> slots = new List<FloorEnemySlot>();
-            for (int i = 0; i < enemyCount; i++)
-            {
-                int slotIndex = (roomId + depth + map.Width + map.Height + i) % parameters.EnemyKindSlots.Count;
-                slots.Add(new FloorEnemySlot(i, parameters.EnemyKindSlots[slotIndex]));
-            }
-
-            return new FloorEncounter(false, enemyCount, slots);
-        }
-
-        private static int FindRoomBeforeExit(IReadOnlyList<FloorEdge> edges, int exitRoomId)
-        {
-            for (int i = 0; i < edges.Count; i++)
-            {
-                FloorEdge edge = edges[i];
-                if (edge.RoomAId == exitRoomId)
+                if (pair.Value > 0)
                 {
-                    return edge.RoomBId;
-                }
-
-                if (edge.RoomBId == exitRoomId)
-                {
-                    return edge.RoomAId;
+                    total += pair.Value;
                 }
             }
 
-            return -1;
+            if (total <= 0)
+            {
+                return RouteType.Combat;
+            }
+
+            int roll = random.Next(0, total);
+            // 결정적 순회를 위해 enum 순서로 걷는다.
+            RouteType[] order = { RouteType.Safe, RouteType.Combat, RouteType.Hazard, RouteType.Special };
+            for (int i = 0; i < order.Length; i++)
+            {
+                if (biomeDef.RouteWeights.TryGetValue(order[i], out int weight) && weight > 0)
+                {
+                    if (roll < weight)
+                    {
+                        return order[i];
+                    }
+
+                    roll -= weight;
+                }
+            }
+
+            return RouteType.Combat;
+        }
+
+        private static string BuildTemplateId(BiomeId biome, RoomKind kind, int id)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}/{1}/{2}",
+                biome.ToString().ToLowerInvariant(),
+                kind.ToString().ToLowerInvariant(),
+                id);
         }
 
         private static RoomKind GetRoomKind(bool isEntrance, bool isExit, bool isBossRoom, bool isCamp)
@@ -217,31 +131,6 @@ namespace Tower.Gen
         private static int NextInclusive(Random random, int min, int max)
         {
             return random.Next(min, max + 1);
-        }
-
-        private static int NextInterior(Random random, int size)
-        {
-            if (size <= 2)
-            {
-                return size / 2;
-            }
-
-            return random.Next(1, size - 1);
-        }
-
-        private static int Clamp(int value, int min, int max)
-        {
-            if (value < min)
-            {
-                return min;
-            }
-
-            if (value > max)
-            {
-                return max;
-            }
-
-            return value;
         }
     }
 }
