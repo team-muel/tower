@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using NUnit.Framework;
+using Tower.Core;
 using Tower.Gen;
 
 namespace Tower.Tests.EditMode
@@ -125,7 +126,7 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
-        public void NonEntranceCombatEncountersFollowDepthClamp()
+        public void NonEntranceCombatEncountersFollowResolvedBudget()
         {
             FloorGenParams parameters = new FloorGenParams(
                 90210,
@@ -146,10 +147,50 @@ namespace Tower.Tests.EditMode
                 }
 
                 FloorNodeContent content = FloorNodeBinder.Bind(graph, node, parameters);
-                int expected = Clamp(1 + node.Depth, 1, 5); // 8x8 map => size bonus 0
+                int expected = ExpectedBudgetCount(parameters, node);
                 Assert.AreEqual(expected, content.Encounter.EnemyCount);
                 Assert.AreEqual(content.Encounter.EnemyCount, content.Encounter.EnemySlots.Count);
             }
+        }
+
+        [Test]
+        public void BinderUsesResolvedEncounterBudget()
+        {
+            var baseBudget = new EncounterBudget(
+                baseDifficulty: 10,
+                depthDifficultyRamp: 0,
+                activeEnemyCapBase: 1f,
+                activeEnemyCapDepthRamp: 0f,
+                activeEnemyCapMax: 1,
+                minTypes: 1,
+                maxTypes: 1,
+                typeCountDepthRamp: 0f,
+                minWaves: 1,
+                maxWaves: 1,
+                eliteCap: 0);
+            var table = new EncounterBudgetTable(baseBudget);
+            table.SetRoomKindOverride("Normal", new EncounterBudgetOverride
+            {
+                BaseDifficulty = 40,
+                ActiveEnemyCapBase = 4f,
+                ActiveEnemyCapMax = 4,
+                MaxTypes = 2
+            });
+
+            FloorGenParams parameters = new FloorGenParams(
+                614,
+                new IntRange(4, 4),
+                false,
+                new IntRange(8, 8),
+                new[] { "melee", "ranged" },
+                "boss",
+                encounterBudgetTable: table);
+            FloorGraph graph = FloorGenerator.Generate(parameters);
+            FloorNode normal = FindFirstNormal(graph);
+
+            FloorNodeContent content = FloorNodeBinder.Bind(graph, normal, parameters);
+
+            Assert.AreEqual(4, content.Encounter.EnemyCount);
         }
 
         [Test]
@@ -286,19 +327,34 @@ namespace Tower.Tests.EditMode
             return false;
         }
 
-        private static int Clamp(int value, int min, int max)
+        private static int ExpectedBudgetCount(FloorGenParams parameters, FloorNode node)
         {
-            if (value < min)
+            EncounterBudget budget = parameters.EncounterBudgetTable.Resolve(
+                parameters.BiomeId.ToString(),
+                node.Kind.ToString());
+            int cap = budget.ActiveEnemyCapAt(node.Depth);
+            int difficultyCount = budget.DifficultyAt(node.Depth) / FloorEncounterComposer.DifficultyPerEnemy;
+            if (difficultyCount < 1)
             {
-                return min;
+                difficultyCount = 1;
             }
 
-            if (value > max)
+            int count = cap < difficultyCount ? cap : difficultyCount;
+            return count < 1 ? 1 : count;
+        }
+
+        private static FloorNode FindFirstNormal(FloorGraph graph)
+        {
+            for (int i = 0; i < graph.Nodes.Count; i++)
             {
-                return max;
+                if (graph.Nodes[i].Kind == RoomKind.Normal)
+                {
+                    return graph.Nodes[i];
+                }
             }
 
-            return value;
+            Assert.Fail("Expected at least one normal node.");
+            return null;
         }
     }
 }

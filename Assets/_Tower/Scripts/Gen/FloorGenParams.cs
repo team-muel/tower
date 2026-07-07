@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Tower.Core;
 
 namespace Tower.Gen
 {
@@ -11,6 +12,22 @@ namespace Tower.Gen
             "ranged",
             "elite"
         };
+
+        // Slice-tuned default for generated floors. EncounterBudget.Default is
+        // a composer reference profile; this one preserves current expedition
+        // pacing while still routing through the budget/composer path.
+        private static readonly EncounterBudget DefaultFloorBudget = new EncounterBudget(
+            baseDifficulty: 10,
+            depthDifficultyRamp: 10,
+            activeEnemyCapBase: 1f,
+            activeEnemyCapDepthRamp: 1f,
+            activeEnemyCapMax: 5,
+            minTypes: 1,
+            maxTypes: 3,
+            typeCountDepthRamp: 0.5f,
+            minWaves: 1,
+            maxWaves: 3,
+            eliteCap: 0);
 
         public FloorGenParams(int seed)
             : this(seed, new IntRange(3, 5), false, new IntRange(8, 14), DefaultEnemyKindSlots, "boss")
@@ -30,7 +47,9 @@ namespace Tower.Gen
             IEnumerable<string> enemyKindSlots,
             string bossKindSlot,
             bool includeCamp = false,
-            BiomeId biomeId = BiomeId.Forest)
+            BiomeId biomeId = BiomeId.Forest,
+            EncounterBudgetTable encounterBudgetTable = null,
+            string eliteKindSlot = null)
         {
             if (roomCountRange.Min < 3)
             {
@@ -62,6 +81,11 @@ namespace Tower.Gen
                 throw new ArgumentException("Boss kind slot is required.", nameof(bossKindSlot));
             }
 
+            if (eliteKindSlot != null && string.IsNullOrWhiteSpace(eliteKindSlot))
+            {
+                throw new ArgumentException("Elite kind slot cannot be blank.", nameof(eliteKindSlot));
+            }
+
             List<string> slots = new List<string>();
             foreach (string slot in enemyKindSlots)
             {
@@ -86,6 +110,8 @@ namespace Tower.Gen
             BossKindSlot = bossKindSlot;
             IncludeCamp = includeCamp;
             BiomeId = biomeId;
+            EncounterBudgetTable = encounterBudgetTable ?? new EncounterBudgetTable(DefaultFloorBudget);
+            EliteKindSlot = eliteKindSlot;
         }
 
         public int Seed { get; }
@@ -100,8 +126,12 @@ namespace Tower.Gen
 
         public string BossKindSlot { get; }
 
+        public string EliteKindSlot { get; }
+
         public bool IncludeCamp { get; }
 
         public BiomeId BiomeId { get; }
+
+        public EncounterBudgetTable EncounterBudgetTable { get; }
     }
 }
