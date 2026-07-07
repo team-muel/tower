@@ -84,9 +84,43 @@ namespace Tower.Tests.EditMode
                 + "]},"
                 + "\"expedition\":{\"stairwayIndex\":1,\"stairwayCount\":1,\"floorIndex\":2,\"floorCount\":3,"
                 + "\"roomIndex\":1,\"roomCount\":4,\"retreatCount\":1,\"isComplete\":false,"
-                + "\"phase\":\"combat\",\"nextRoomPreview\":\"강적\",\"lastOutcome\":\"Retreated\"},"
+                + "\"phase\":\"combat\",\"nextRoomPreview\":\"강적\",\"lastOutcome\":\"Retreated\",\"offeredPortals\":[]},"
                 + "\"camp\":null}";
             Assert.That(json, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ToJson_ExpeditionPortals_WritesPortalPreviews()
+        {
+            var snapshot = new QaStateSnapshot
+            {
+                sceneName = "Expedition",
+                expedition = new QaExpeditionSnapshot
+                {
+                    phase = "exploration",
+                    offeredPortals = new List<QaPortalSnapshot>
+                    {
+                        new QaPortalSnapshot
+                        {
+                            doorIndex = 1,
+                            toRoomId = 3,
+                            toRoomKind = "Boss",
+                            rewardType = "Shortcut",
+                            rewardMagnitude = 1,
+                            riskTags = new List<string> { "Boss", "HighStakes" },
+                            lockReason = "BossGated",
+                            locked = true,
+                            rerollAllowed = false
+                        }
+                    }
+                }
+            };
+
+            var json = QaStateSerializer.ToJson(snapshot);
+
+            Assert.That(json, Does.Contain("\"offeredPortals\":[{\"doorIndex\":1,\"toRoomId\":3,\"toRoomKind\":\"Boss\""));
+            Assert.That(json, Does.Contain("\"rewardType\":\"Shortcut\",\"rewardMagnitude\":1"));
+            Assert.That(json, Does.Contain("\"riskTags\":[\"Boss\",\"HighStakes\"],\"lockReason\":\"BossGated\",\"locked\":true,\"rerollAllowed\":false"));
         }
 
         // T19: command mode defaults off and pending ability defaults empty.
