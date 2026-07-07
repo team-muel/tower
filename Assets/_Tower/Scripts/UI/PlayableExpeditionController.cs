@@ -75,6 +75,7 @@ namespace Tower.UI
         private GameObject explorationRoomRoot;
         private readonly List<ExplorationPortalAnchor> explorationPortals = new List<ExplorationPortalAnchor>();
         private ExplorationPortalAnchor hoveredPortal;
+        private PortalOffer currentPortalOffer;
 
         private void Start()
         {
@@ -189,7 +190,8 @@ namespace Tower.UI
                     isComplete = state.IsComplete,
                     phase = currentPhase,
                     nextRoomPreview = nextRoomPreview,
-                    lastOutcome = lastOutcome
+                    lastOutcome = lastOutcome,
+                    offeredPortals = BuildQaPortalSnapshots()
                 };
             }
 
@@ -458,6 +460,7 @@ namespace Tower.UI
             var seed = BaseSeed + (state.StairwayIndex * 1000) + state.FloorIndex + UnityEngine.Random.Range(0, 997);
             var layout = FloorGenerator.Generate(new FloorGenParams(seed, state.FloorIndex == state.FloorCount));
             currentLayout = layout;
+            currentPortalOffer = null;
             encounterRooms.Clear();
             encounterRooms.AddRange(layout.Rooms
                 .Where(room => room.Encounter.HasEncounter)
@@ -488,7 +491,8 @@ namespace Tower.UI
             currentPhase = "exploration";
             awaitingNextFloor = true;
             var room = encounterRooms[encounterIndex];
-            nextRoomPreview = BuildRoomPreview(room);
+            currentPortalOffer = EnsurePortalOffer(room);
+            nextRoomPreview = BuildOfferPreview(currentPortalOffer, room);
             BuildExplorationRoom(room);
             if (explorationText != null)
             {
@@ -526,9 +530,20 @@ namespace Tower.UI
                 CreateRoomBlock(root, $"Floor Seam Z{z}", new Vector3(0f, 0.012f, z), new Vector3(10f, 0.02f, 0.035f), new Color(0.27f, 0.25f, 0.22f, 1f));
             }
 
-            CreatePortal(root, 0, "North Door", "북쪽 문", room, new Vector3(0f, 0f, 3.65f), Quaternion.Euler(0f, 180f, 0f));
-            CreatePortal(root, 1, "East Door", "동쪽 문", room, new Vector3(3.75f, 0f, 1.05f), Quaternion.Euler(0f, -125f, 0f));
-            CreatePortal(root, 2, "West Door", "서쪽 문", room, new Vector3(-3.75f, 0f, 1.05f), Quaternion.Euler(0f, 125f, 0f));
+            var offer = EnsurePortalOffer(room);
+            for (var doorIndex = 0; doorIndex < room.Doors.Count; doorIndex++)
+            {
+                var door = room.Doors[doorIndex];
+                CreatePortal(
+                    root,
+                    doorIndex,
+                    DoorQaLabel(door.Side),
+                    DoorDisplayLabel(door.Side),
+                    room,
+                    offer.ForDoor(doorIndex),
+                    PortalPosition(door.Side, doorIndex),
+                    PortalRotation(door.Side));
+            }
 
             CreateOrbCue(root, "Memory Orb Cue", new Vector3(-2.3f, 0.72f, -1.9f), new Color(0.42f, 0.82f, 1f, 1f), "기억 오브");
             CreateRoomBlock(root, "Relic Container", new Vector3(2.4f, 0.28f, -2.05f), new Vector3(0.95f, 0.55f, 0.65f), new Color(0.55f, 0.42f, 0.22f, 1f));
@@ -567,7 +582,7 @@ namespace Tower.UI
             return block;
         }
 
-        private void CreatePortal(Transform parent, int doorIndex, string qaLabel, string displayLabel, FloorRoom room, Vector3 position, Quaternion rotation)
+        private void CreatePortal(Transform parent, int doorIndex, string qaLabel, string displayLabel, FloorRoom room, PortalDef portalDef, Vector3 position, Quaternion rotation)
         {
             var portal = new GameObject(qaLabel + " Anchor");
             portal.transform.SetParent(parent, false);
@@ -578,9 +593,10 @@ namespace Tower.UI
             anchor.DoorIndex = doorIndex;
             anchor.QaLabel = qaLabel;
             anchor.DisplayLabel = displayLabel;
-            anchor.Preview = BuildRoomPreview(room);
-            anchor.BaseColor = PortalColor(room, false);
-            anchor.HoverColor = PortalColor(room, true);
+            anchor.Portal = portalDef;
+            anchor.Preview = BuildPortalPreview(portalDef, room);
+            anchor.BaseColor = PortalColor(portalDef, false);
+            anchor.HoverColor = PortalColor(portalDef, true);
             explorationPortals.Add(anchor);
 
             CreatePortalBlock(portal.transform, "Left Pillar", new Vector3(-0.72f, 0.78f, 0f), new Vector3(0.22f, 1.55f, 0.25f), anchor.BaseColor, anchor);
@@ -652,14 +668,19 @@ namespace Tower.UI
             textObject.AddComponent<FaceCamera>().Target = sceneCamera;
         }
 
-        private static Color PortalColor(FloorRoom room, bool hover)
+        private static Color PortalColor(PortalDef portal, bool hover)
         {
-            if (room != null && room.Encounter.IsBoss)
+            if (portal != null && portal.IsLocked)
+            {
+                return hover ? new Color(0.6f, 0.62f, 0.64f, 1f) : new Color(0.32f, 0.34f, 0.36f, 1f);
+            }
+
+            if (portal != null && portal.HasRisk(PortalRisk.Boss))
             {
                 return hover ? new Color(1f, 0.42f, 0.34f, 1f) : new Color(0.62f, 0.16f, 0.12f, 1f);
             }
 
-            if (room != null && room.Encounter.EnemyCount >= 3)
+            if (portal != null && portal.HasRisk(PortalRisk.Elite))
             {
                 return hover ? new Color(1f, 0.7f, 0.28f, 1f) : new Color(0.64f, 0.36f, 0.13f, 1f);
             }
@@ -692,8 +713,14 @@ namespace Tower.UI
             SetHoveredPortal(portal);
             if (portal != null && Input.GetMouseButtonDown(0))
             {
+                if (portal.IsLocked)
+                {
+                    AddLog($"{portal.DisplayLabel} 잠김: {portal.Preview}");
+                    return;
+                }
+
                 AddLog($"{portal.DisplayLabel} 선택: {portal.Preview}");
-                EnterSelectedDoor();
+                EnterSelectedDoor(portal.Portal);
             }
         }
 
@@ -1460,6 +1487,31 @@ namespace Tower.UI
 
         private void EnterSelectedDoor()
         {
+            EnterSelectedDoor(null);
+        }
+
+        private void EnterSelectedDoor(PortalDef portal)
+        {
+            if (portal != null)
+            {
+                if (portal.IsLocked)
+                {
+                    lastOutcome = "Portal locked: " + LockReasonLabel(portal.LockReason);
+                    return;
+                }
+
+                lastOutcome = $"Portal reward: {portal.RewardType} x{portal.RewardMagnitude}";
+                if (portal.ToRoomId >= 0)
+                {
+                    var destination = FindLayoutRoom(portal.ToRoomId);
+                    if (destination != null)
+                    {
+                        EnterRoomFromPortal(destination);
+                        return;
+                    }
+                }
+            }
+
             if (encounterIndex >= encounterRooms.Count)
             {
                 ClearFloor();
@@ -1468,6 +1520,28 @@ namespace Tower.UI
 
             var room = encounterRooms[encounterIndex++];
             StartEncounter(room);
+        }
+
+        private void EnterRoomFromPortal(FloorRoom room)
+        {
+            var encounterRoomIndex = FindEncounterIndex(room.Id);
+            if (encounterRoomIndex >= 0)
+            {
+                encounterIndex = encounterRoomIndex + 1;
+                StartEncounter(room);
+                return;
+            }
+
+            encounterIndex = FindNextEncounterIndexAfter(room);
+            AddLog($"Non-combat room {room.Id} entered via portal.");
+            currentPortalOffer = null;
+            if (room.IsExit || encounterIndex >= encounterRooms.Count)
+            {
+                ClearFloor();
+                return;
+            }
+
+            ShowDoorChoiceOrClearFloor();
         }
 
         private string BuildRoomPreview(FloorRoom room)
@@ -1488,6 +1562,275 @@ namespace Tower.UI
             }
 
             return room.Encounter.EnemyCount >= 3 ? "강적" : "조우";
+        }
+
+        private PortalOffer EnsurePortalOffer(FloorRoom room)
+        {
+            if (room == null)
+            {
+                return null;
+            }
+
+            if (currentPortalOffer != null && currentPortalOffer.RoomId == room.Id)
+            {
+                return currentPortalOffer;
+            }
+
+            currentPortalOffer = currentLayout == null
+                ? PortalOffer.Empty(room.Id)
+                : PortalAssigner.AssignForRoom(currentLayout, room);
+            return currentPortalOffer;
+        }
+
+        private List<QaPortalSnapshot> BuildQaPortalSnapshots()
+        {
+            var snapshots = new List<QaPortalSnapshot>();
+            if (!StringComparer.Ordinal.Equals(currentPhase, "exploration") || currentPortalOffer == null)
+            {
+                return snapshots;
+            }
+
+            for (var index = 0; index < currentPortalOffer.Portals.Count; index++)
+            {
+                var portal = currentPortalOffer.Portals[index];
+                var snapshot = new QaPortalSnapshot
+                {
+                    doorIndex = portal.DoorIndex,
+                    toRoomId = portal.ToRoomId,
+                    toRoomKind = portal.ToRoomKind.ToString(),
+                    rewardType = portal.RewardType.ToString(),
+                    rewardMagnitude = portal.RewardMagnitude,
+                    lockReason = portal.LockReason.ToString(),
+                    locked = portal.IsLocked,
+                    rerollAllowed = portal.RerollAllowed
+                };
+
+                AddRiskTag(snapshot.riskTags, portal.RiskTags, PortalRisk.Elite);
+                AddRiskTag(snapshot.riskTags, portal.RiskTags, PortalRisk.Boss);
+                AddRiskTag(snapshot.riskTags, portal.RiskTags, PortalRisk.Hazard);
+                AddRiskTag(snapshot.riskTags, portal.RiskTags, PortalRisk.HighStakes);
+                snapshots.Add(snapshot);
+            }
+
+            return snapshots;
+        }
+
+        private static void AddRiskTag(List<string> tags, PortalRisk actual, PortalRisk tag)
+        {
+            if ((actual & tag) == tag)
+            {
+                tags.Add(tag.ToString());
+            }
+        }
+
+        private static string BuildOfferPreview(PortalOffer offer, FloorRoom fallbackRoom)
+        {
+            if (offer == null || offer.Portals.Count == 0)
+            {
+                return BuildRoomPreviewStatic(fallbackRoom);
+            }
+
+            return BuildPortalPreview(offer.Portals[0], fallbackRoom);
+        }
+
+        private static string BuildPortalPreview(PortalDef portal, FloorRoom fallbackRoom)
+        {
+            if (portal == null)
+            {
+                return BuildRoomPreviewStatic(fallbackRoom);
+            }
+
+            if (portal.IsLocked)
+            {
+                return "잠김: " + LockReasonLabel(portal.LockReason);
+            }
+
+            return "보상: " + RewardLabel(portal.RewardType) + " / 위험: " + RiskLabel(portal.RiskTags);
+        }
+
+        private static string BuildRoomPreviewStatic(FloorRoom room)
+        {
+            if (room == null)
+            {
+                return "출구";
+            }
+
+            if (room.Encounter.IsBoss)
+            {
+                return "보스";
+            }
+
+            if (room.Encounter.EnemyCount <= 0)
+            {
+                return "캠프";
+            }
+
+            return room.Encounter.EnemyCount >= 3 ? "강적" : "조우";
+        }
+
+        private static string RewardLabel(RewardType reward)
+        {
+            switch (reward)
+            {
+                case RewardType.Heal:
+                    return "회복";
+                case RewardType.Resource:
+                    return "자원";
+                case RewardType.Ability:
+                    return "능력";
+                case RewardType.Shortcut:
+                    return "숏컷";
+                default:
+                    return "없음";
+            }
+        }
+
+        private static string RiskLabel(PortalRisk risk)
+        {
+            if ((risk & PortalRisk.Boss) == PortalRisk.Boss)
+            {
+                return "보스";
+            }
+
+            if ((risk & PortalRisk.Elite) == PortalRisk.Elite)
+            {
+                return "강적";
+            }
+
+            if ((risk & PortalRisk.Hazard) == PortalRisk.Hazard)
+            {
+                return "위험지대";
+            }
+
+            return "보통";
+        }
+
+        private static string LockReasonLabel(PortalLockReason reason)
+        {
+            switch (reason)
+            {
+                case PortalLockReason.RequiresKey:
+                    return "열쇠 필요";
+                case PortalLockReason.BossGated:
+                    return "보스 관문";
+                case PortalLockReason.DepthGated:
+                    return "깊이 제한";
+                default:
+                    return "없음";
+            }
+        }
+
+        private FloorRoom FindLayoutRoom(int roomId)
+        {
+            if (currentLayout == null)
+            {
+                return null;
+            }
+
+            for (var index = 0; index < currentLayout.Rooms.Count; index++)
+            {
+                if (currentLayout.Rooms[index].Id == roomId)
+                {
+                    return currentLayout.Rooms[index];
+                }
+            }
+
+            return null;
+        }
+
+        private int FindEncounterIndex(int roomId)
+        {
+            for (var index = 0; index < encounterRooms.Count; index++)
+            {
+                if (encounterRooms[index].Id == roomId)
+                {
+                    return index;
+                }
+            }
+
+            return -1;
+        }
+
+        private int FindNextEncounterIndexAfter(FloorRoom room)
+        {
+            for (var index = 0; index < encounterRooms.Count; index++)
+            {
+                var candidate = encounterRooms[index];
+                if (candidate.Depth > room.Depth || (candidate.Depth == room.Depth && candidate.Id > room.Id))
+                {
+                    return index;
+                }
+            }
+
+            return encounterRooms.Count;
+        }
+
+        private static string DoorQaLabel(FloorDoorSide side)
+        {
+            switch (side)
+            {
+                case FloorDoorSide.North:
+                    return "North Door";
+                case FloorDoorSide.East:
+                    return "East Door";
+                case FloorDoorSide.South:
+                    return "South Door";
+                case FloorDoorSide.West:
+                    return "West Door";
+                default:
+                    return "Door";
+            }
+        }
+
+        private static string DoorDisplayLabel(FloorDoorSide side)
+        {
+            switch (side)
+            {
+                case FloorDoorSide.North:
+                    return "북쪽 문";
+                case FloorDoorSide.East:
+                    return "동쪽 문";
+                case FloorDoorSide.South:
+                    return "남쪽 문";
+                case FloorDoorSide.West:
+                    return "서쪽 문";
+                default:
+                    return "문";
+            }
+        }
+
+        private static Vector3 PortalPosition(FloorDoorSide side, int doorIndex)
+        {
+            switch (side)
+            {
+                case FloorDoorSide.North:
+                    return new Vector3(0f, 0f, 3.65f);
+                case FloorDoorSide.East:
+                    return new Vector3(3.75f, 0f, 1.05f);
+                case FloorDoorSide.South:
+                    return new Vector3(0f, 0f, -3.15f);
+                case FloorDoorSide.West:
+                    return new Vector3(-3.75f, 0f, 1.05f);
+                default:
+                    return new Vector3((doorIndex - 1) * 2f, 0f, 2f);
+            }
+        }
+
+        private static Quaternion PortalRotation(FloorDoorSide side)
+        {
+            switch (side)
+            {
+                case FloorDoorSide.North:
+                    return Quaternion.Euler(0f, 180f, 0f);
+                case FloorDoorSide.East:
+                    return Quaternion.Euler(0f, -125f, 0f);
+                case FloorDoorSide.South:
+                    return Quaternion.Euler(0f, 0f, 0f);
+                case FloorDoorSide.West:
+                    return Quaternion.Euler(0f, 125f, 0f);
+                default:
+                    return Quaternion.identity;
+            }
         }
 
         private void ShowResult(ExpeditionProgress progress)
@@ -1981,9 +2324,15 @@ namespace Tower.UI
             public string QaLabel;
             public string DisplayLabel;
             public string Preview;
+            public PortalDef Portal;
             public Color BaseColor;
             public Color HoverColor;
             public TextMesh Label;
+
+            public bool IsLocked
+            {
+                get { return Portal != null && Portal.IsLocked; }
+            }
 
             public void Register(Renderer renderer)
             {
