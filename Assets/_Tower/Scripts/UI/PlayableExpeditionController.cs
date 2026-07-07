@@ -53,6 +53,7 @@ namespace Tower.UI
         private Text unitText;
         private Text resultText;
         private Text logText;
+        private InitiativeRibbonController initiativeRibbon;
         private Button moveButton;
         private Button proceedButton;
         private readonly List<Button> abilityButtons = new List<Button>();
@@ -287,6 +288,11 @@ namespace Tower.UI
             // Map button (top-right, compact)
             var mapBtn = RegisterQaButton(RuntimeSceneUi.AddButton(topBar, "Map", ToggleDungeonMap));
             SetAnchors(mapBtn, new Vector2(0.92f, 0.1f), new Vector2(0.99f, 0.9f));
+
+            // T23: initiative ribbon — top-edge strip, under the top bar, so
+            // it reads at a glance without covering the 3D viewport.
+            initiativeRibbon = InitiativeRibbonController.Create(root, UnitColor);
+            initiativeRibbon.Clear();
 
             // ── Bottom-Left Panel: Initiative + Units (~22% wide, ~18% tall) ──
             var bottomLeft = RuntimeSceneUi.CreateOverlayPanel(
@@ -1325,6 +1331,11 @@ namespace Tower.UI
                     initiativeText.text = string.Empty;
                 }
 
+                if (initiativeRibbon != null)
+                {
+                    initiativeRibbon.Clear();
+                }
+
                 if (unitText != null)
                 {
                     unitText.text = string.Empty;
@@ -1336,6 +1347,15 @@ namespace Tower.UI
             if (initiativeText != null)
             {
                 initiativeText.text = "이니셔티브: " + string.Join(" -> ", engine.CurrentRoundOrder);
+            }
+
+            if (initiativeRibbon != null)
+            {
+                initiativeRibbon.Refresh(
+                    engine.CurrentRoundOrder,
+                    engine.CurrentTurn?.UnitId,
+                    engine.IsAlive,
+                    unitId => engine.GetCombatant(unitId) is { } combatant ? combatant.Team : CombatTeam.Player);
             }
 
             if (unitText != null)
