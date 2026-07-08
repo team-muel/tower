@@ -51,6 +51,7 @@ namespace Tower.Floor
         private readonly FloorExploration _exploration = new FloorExploration();
         private readonly Dictionary<int, HeightField> _nodeHeight = new Dictionary<int, HeightField>();
         private readonly Dictionary<int, Vector3> _nodeOrigin = new Dictionary<int, Vector3>();
+        private readonly Dictionary<int, InteractableRegistry> _registries = new Dictionary<int, InteractableRegistry>();
         private Transform _root;
         private Material _terrainMat;
         private bool _busy;
@@ -73,6 +74,7 @@ namespace Tower.Floor
             ClearGeneratedRoot();
             _nodeHeight.Clear();
             _nodeOrigin.Clear();
+            _registries.Clear();
 
             FloorGenParams parameters = new FloorGenParams(
                 seed,
@@ -155,6 +157,86 @@ namespace Tower.Floor
             foreach (ForestProp r in plan.Rocks) BuildRock(node.Id, r, rocks);
 
             BuildPathStrip(node.Id, plan.PathWaypoints, parent);
+            BuildAnchors(node, field, plan.Clearing, parent);
+        }
+
+        // T41 (M4): place T29 interaction anchors for the node and bind them into
+        // a per-node InteractableRegistry the WorldInteractionController resolves.
+        private void BuildAnchors(FloorNode node, FloorFieldRect field, ForestClearing clearing, Transform parent)
+        {
+            NodeAnchorPlan plan = NodeAnchorPlanner.Build(_graph.Seed, node, field, clearing);
+            if (plan.Anchors.Count == 0) return;
+
+            InteractableRegistry registry = new InteractableRegistry();
+            Transform anchorsRoot = new GameObject("Anchors").transform;
+            anchorsRoot.SetParent(parent, false);
+            foreach (PlacedAnchor a in plan.Anchors)
+            {
+                if (registry.Add(a.Def).IsFailure) continue;
+                BuildAnchorObject(node.Id, a, anchorsRoot);
+            }
+
+            _registries[node.Id] = registry;
+        }
+
+        private void BuildAnchorObject(int nodeId, PlacedAnchor a, Transform parent)
+        {
+            AnchorVisual(a.Kind, out PrimitiveType prim, out Vector3 scale, out Color color);
+            float gy = GroundY(nodeId, a.Position.x, a.Position.z);
+            GameObject go = GameObject.CreatePrimitive(prim);
+            go.name = $"Anchor_{a.Def.Id}";
+            go.transform.SetParent(parent, true);
+            go.transform.position = new Vector3(a.Position.x, gy + Mathf.Max(0.1f, scale.y * 0.5f), a.Position.z);
+            go.transform.localScale = scale;
+            Paint(go, color);
+            AnchorMarker marker = go.AddComponent<AnchorMarker>();
+            marker.Bind(nodeId, a.Def.Id, a.Kind, color);
+        }
+
+        // Placeholder kind -> (primitive, scale, tint). Replaced by authored props later (77 §4).
+        private static void AnchorVisual(InteractableKind kind, out PrimitiveType prim, out Vector3 scale, out Color color)
+        {
+            switch (kind)
+            {
+                case InteractableKind.Chest:
+                    prim = PrimitiveType.Cube; scale = new Vector3(1.1f, 0.7f, 0.8f); color = new Color(0.85f, 0.62f, 0.25f); break;
+                case InteractableKind.Shrine:
+                    prim = PrimitiveType.Sphere; scale = new Vector3(0.9f, 0.9f, 0.9f); color = new Color(0.4f, 0.8f, 0.95f); break;
+                case InteractableKind.Grave:
+                    prim = PrimitiveType.Cube; scale = new Vector3(0.7f, 1.3f, 0.25f); color = new Color(0.62f, 0.62f, 0.66f); break;
+                case InteractableKind.Trap:
+                    prim = PrimitiveType.Cylinder; scale = new Vector3(1.2f, 0.1f, 1.2f); color = new Color(0.85f, 0.3f, 0.3f); break;
+                case InteractableKind.Resource:
+                    prim = PrimitiveType.Sphere; scale = new Vector3(0.7f, 0.7f, 0.7f); color = new Color(0.45f, 0.8f, 0.45f); break;
+                case InteractableKind.Inspect:
+                default:
+                    prim = PrimitiveType.Cube; scale = new Vector3(0.4f, 1.6f, 0.4f); color = new Color(0.9f, 0.82f, 0.35f); break;
+            }
+        }
+
+        // The node's interaction table, or null before the floor is built.
+        public InteractableRegistry RegistryFor(int nodeId)
+        {
+            return _registries.TryGetValue(nodeId, out InteractableRegistry reg) ? reg : null;
+        }
+
+        // World facts the interaction resolves against (v0: no retreat/death yet).
+        public InteractionContext BuildContext()
+        {
+            int depth = 0;
+            for (int i = 0; i < _graph.Nodes.Count; i++)
+            {
+                if (_graph.Nodes[i].Id == CurrentNodeId) { depth = _graph.Nodes[i].Depth; break; }
+            }
+
+            return new InteractionContext(depth, false, false, biomeId.ToString(), new[] { "regressor" });
+        }
+
+        private void EnsureInteractionController()
+        {
+            WorldInteractionController wic = GetComponent<WorldInteractionController>();
+            if (wic == null) wic = gameObject.AddComponent<WorldInteractionController>();
+            wic.Bind(this, playerTransform);
         }
 
         private void BuildTree(int nodeId, ForestProp t, Transform parent)
@@ -334,6 +416,7 @@ namespace Tower.Floor
         {
             CurrentNodeId = _graph.EntranceNodeId;
             EnsurePlayer();
+            EnsureInteractionController();
             FloorFieldRect entry = _layout.GetField(CurrentNodeId);
             if (playerTransform != null)
             {
