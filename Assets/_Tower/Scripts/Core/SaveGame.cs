@@ -6,9 +6,9 @@ namespace Tower.Core
     // [Serializable]). Character definitions are referenced by id and
     // resolved on load, so the file stays plain data.
     //
-    // T12 adds hiddenMissingIds. The version stays 1: older saves simply
-    // deserialize with an empty array, which is the correct default
-    // (no hidden-missing presets recorded yet).
+    // T12 adds hiddenMissingIds. T43 adds anchorStates. The version stays 1:
+    // older saves simply deserialize with an empty array, which is the correct
+    // default (no hidden-missing presets or interaction state recorded yet).
     [Serializable]
     public sealed class SaveGame
     {
@@ -27,6 +27,7 @@ namespace Tower.Core
         public string[] hiddenMissingIds = new string[0];
         public string[] fallenIds = new string[0];
         public int[] shortcutStairways = new int[0];
+        public AnchorRuntimeSnapshot[] anchorStates = new AnchorRuntimeSnapshot[0];
     }
 
     [Serializable]

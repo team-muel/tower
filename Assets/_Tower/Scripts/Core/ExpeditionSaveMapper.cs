@@ -12,7 +12,9 @@ namespace Tower.Core
     // resolved CharacterDef, so they are not duplicated in the save file.
     public static class ExpeditionSaveMapper
     {
-        public static Result<SaveGame> ToSave(ExpeditionState state)
+        public static Result<SaveGame> ToSave(
+            ExpeditionState state,
+            IEnumerable<AnchorRuntimeSnapshot> anchorStates = null)
         {
             if (state == null)
             {
@@ -33,7 +35,8 @@ namespace Tower.Core
                 missingIds = state.MissingIds.ToArray(),
                 hiddenMissingIds = state.HiddenMissingIds.ToArray(),
                 fallenIds = state.FallenIds.ToArray(),
-                shortcutStairways = state.ShortcutStairways.OrderBy(index => index).ToArray()
+                shortcutStairways = state.ShortcutStairways.OrderBy(index => index).ToArray(),
+                anchorStates = CopyAnchorSnapshots(anchorStates).ToArray()
             };
             return Result<SaveGame>.Success(save);
         }
@@ -80,6 +83,31 @@ namespace Tower.Core
                 new List<string>(save.hiddenMissingIds ?? new string[0]),
                 new List<string>(save.fallenIds ?? new string[0]),
                 new HashSet<int>(save.shortcutStairways ?? new int[0]));
+        }
+
+        public static Result<InteractionRuntimeStore> ToInteractionStore(SaveGame save)
+        {
+            if (save == null)
+            {
+                return Result<InteractionRuntimeStore>.Failure("Save game is required.");
+            }
+
+            if (save.version != SaveGame.CurrentVersion)
+            {
+                return Result<InteractionRuntimeStore>.Failure($"Unsupported save version {save.version}.");
+            }
+
+            var store = new InteractionRuntimeStore();
+            foreach (AnchorRuntimeSnapshot snapshot in save.anchorStates ?? new AnchorRuntimeSnapshot[0])
+            {
+                Result remembered = store.Remember(snapshot);
+                if (remembered.IsFailure)
+                {
+                    return Result<InteractionRuntimeStore>.Failure(remembered.Error);
+                }
+            }
+
+            return Result<InteractionRuntimeStore>.Success(store);
         }
 
         private static SaveMember ToSaveMember(ExpeditionMember member)
@@ -133,6 +161,32 @@ namespace Tower.Core
             }
 
             return Result<List<ExpeditionMember>>.Success(members);
+        }
+
+        private static List<AnchorRuntimeSnapshot> CopyAnchorSnapshots(IEnumerable<AnchorRuntimeSnapshot> snapshots)
+        {
+            var result = new List<AnchorRuntimeSnapshot>();
+            if (snapshots == null)
+            {
+                return result;
+            }
+
+            foreach (AnchorRuntimeSnapshot snapshot in snapshots)
+            {
+                if (snapshot == null || string.IsNullOrWhiteSpace(snapshot.anchorId))
+                {
+                    continue;
+                }
+
+                result.Add(new AnchorRuntimeSnapshot(
+                    snapshot.anchorId,
+                    snapshot.kind,
+                    snapshot.state,
+                    snapshot.usesRemaining));
+            }
+
+            result.Sort((a, b) => StringComparer.Ordinal.Compare(a.anchorId, b.anchorId));
+            return result;
         }
     }
 }

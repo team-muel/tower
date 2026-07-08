@@ -88,6 +88,39 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void SaveThenLoad_RoundTripsInteractionAnchorState()
+        {
+            var state = CreateExpedition("a");
+            var anchorStates = new[]
+            {
+                new AnchorRuntimeSnapshot("node_01_chest", InteractableKind.Chest, AnchorState.Looted, 0),
+                new AnchorRuntimeSnapshot("node_02_resource", InteractableKind.Resource, AnchorState.Unlooted, 2),
+            };
+            var repository = CreateRepository();
+
+            var save = ExpeditionSaveMapper.ToSave(state, anchorStates);
+            Assert.That(save.IsSuccess, Is.True, save.Error);
+            Assert.That(repository.Save(save.Value).IsSuccess, Is.True);
+
+            var loaded = repository.Load();
+            Assert.That(loaded.IsSuccess, Is.True, loaded.Error);
+            Assert.That(loaded.Value.anchorStates.Select(anchor => anchor.anchorId),
+                Is.EqualTo(new[] { "node_01_chest", "node_02_resource" }));
+
+            var restoredStore = ExpeditionSaveMapper.ToInteractionStore(loaded.Value);
+            Assert.That(restoredStore.IsSuccess, Is.True, restoredStore.Error);
+
+            var chestDef = InteractableDef.Create(
+                "node_01_chest", InteractableKind.Chest, "연다",
+                stateChanges: new[] { new AnchorStateChange(AnchorState.Looted) }).Value;
+            var runtime = restoredStore.Value.RuntimeFor(chestDef);
+
+            Assert.That(runtime.IsSuccess, Is.True, runtime.Error);
+            Assert.That(runtime.Value.State, Is.EqualTo(AnchorState.Looted));
+            Assert.That(runtime.Value.UsesRemaining, Is.EqualTo(0));
+        }
+
+        [Test]
         public void Load_WithoutSaveFile_Fails()
         {
             var repository = CreateRepository();
