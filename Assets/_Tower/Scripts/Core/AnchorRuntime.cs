@@ -47,6 +47,20 @@ namespace Tower.Core
             return Result<AnchorRuntime>.Success(new AnchorRuntime(kind, initialState, maxUses));
         }
 
+        public static Result<AnchorRuntime> Restore(
+            InteractableKind kind,
+            AnchorState state,
+            int usesRemaining)
+        {
+            if (!IsLegalInitialState(kind, state))
+            {
+                return Result<AnchorRuntime>.Failure(
+                    $"State '{state}' is not a legal restore target for kind '{kind}'.");
+            }
+
+            return Result<AnchorRuntime>.Success(new AnchorRuntime(kind, state, usesRemaining));
+        }
+
         public static AnchorRuntime CreateDefault(InteractableKind kind, int maxUses = 1)
         {
             return new AnchorRuntime(kind, DefaultState(kind), maxUses);

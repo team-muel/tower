@@ -88,6 +88,17 @@ namespace Tower.Core
             return result;
         }
 
+        public IReadOnlyList<AnchorRuntimeSnapshot> CaptureRuntimeState()
+        {
+            var snapshots = new List<AnchorRuntimeSnapshot>(entries.Count);
+            foreach (var entry in entries)
+            {
+                snapshots.Add(AnchorRuntimeSnapshot.From(entry.Def.Id, entry.Runtime));
+            }
+
+            return snapshots;
+        }
+
         // Applies a use: resolves eligibility, then transitions the runtime.
         // Returns the applied state change or a failure explaining why not.
         public Result<InteractionState> Use(string id, InteractionContext context)

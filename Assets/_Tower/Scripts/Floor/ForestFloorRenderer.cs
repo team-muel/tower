@@ -52,6 +52,7 @@ namespace Tower.Floor
         private readonly Dictionary<int, HeightField> _nodeHeight = new Dictionary<int, HeightField>();
         private readonly Dictionary<int, Vector3> _nodeOrigin = new Dictionary<int, Vector3>();
         private readonly Dictionary<int, InteractableRegistry> _registries = new Dictionary<int, InteractableRegistry>();
+        private readonly InteractionRuntimeStore _interactionRuntimeStore = new InteractionRuntimeStore();
         private Transform _root;
         private Material _terrainMat;
         private bool _busy;
@@ -71,6 +72,7 @@ namespace Tower.Floor
         [ContextMenu("Rebuild Forest Floor")]
         public void Rebuild()
         {
+            CaptureInteractionState();
             ClearGeneratedRoot();
             _nodeHeight.Clear();
             _nodeOrigin.Clear();
@@ -172,7 +174,11 @@ namespace Tower.Floor
             anchorsRoot.SetParent(parent, false);
             foreach (PlacedAnchor a in plan.Anchors)
             {
-                if (registry.Add(a.Def).IsFailure) continue;
+                Result<AnchorRuntime> runtime = _interactionRuntimeStore.RuntimeFor(a.Def);
+                AnchorRuntime resolved = runtime.IsSuccess
+                    ? runtime.Value
+                    : AnchorRuntime.CreateDefault(a.Def.Kind, a.Def.MaxUses);
+                if (registry.Add(a.Def, resolved).IsFailure) continue;
                 BuildAnchorObject(node.Id, a, anchorsRoot);
             }
 
@@ -218,6 +224,16 @@ namespace Tower.Floor
         public InteractableRegistry RegistryFor(int nodeId)
         {
             return _registries.TryGetValue(nodeId, out InteractableRegistry reg) ? reg : null;
+        }
+
+        public IReadOnlyList<AnchorRuntimeSnapshot> CaptureInteractionState()
+        {
+            foreach (InteractableRegistry registry in _registries.Values)
+            {
+                _interactionRuntimeStore.Capture(registry);
+            }
+
+            return _interactionRuntimeStore.ToSnapshots();
         }
 
         // World facts the interaction resolves against (v0: no retreat/death yet).

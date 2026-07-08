@@ -214,6 +214,16 @@ namespace Tower.Tests.EditMode
             Assert.That(unlimited.UsesRemaining, Is.EqualTo(-1));
         }
 
+        [Test]
+        public void Restore_AllowsSpentRuntime()
+        {
+            var restored = AnchorRuntime.Restore(InteractableKind.Chest, AnchorState.Looted, 0);
+
+            Assert.That(restored.IsSuccess, Is.True);
+            Assert.That(restored.Value.IsSpent, Is.True);
+            Assert.That(restored.Value.State, Is.EqualTo(AnchorState.Looted));
+        }
+
         // ---- Determinism ----------------------------------------------------
 
         [Test]
@@ -413,6 +423,38 @@ namespace Tower.Tests.EditMode
             Assert.That(used.IsSuccess, Is.True);
             Assert.That(registry.Find("inspect_mural").Runtime.State, Is.EqualTo(AnchorState.Idle));
             Assert.That(registry.Find("inspect_mural").Runtime.IsSpent, Is.True);
+        }
+
+        [Test]
+        public void RuntimeStore_CaptureAndRestore_PreservesSpentAnchor()
+        {
+            var def = InteractableDef.Create(
+                "chest_relic", InteractableKind.Chest, "연다",
+                stateChanges: new[] { new AnchorStateChange(AnchorState.Looted) }).Value;
+            var registry = new InteractableRegistry();
+            registry.Add(def);
+            registry.Use("chest_relic", new InteractionContext(1, false, false, "forest"));
+
+            var store = new InteractionRuntimeStore();
+            store.Capture(registry);
+            Result<AnchorRuntime> restored = store.RuntimeFor(def);
+
+            Assert.That(restored.IsSuccess, Is.True);
+            Assert.That(restored.Value.State, Is.EqualTo(AnchorState.Looted));
+            Assert.That(restored.Value.UsesRemaining, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void RuntimeStore_MissingSnapshot_ReturnsFreshDefault()
+        {
+            var def = InteractableDef.Create("resource_01", InteractableKind.Resource, "줍는다", maxUses: 2).Value;
+            var store = new InteractionRuntimeStore();
+
+            Result<AnchorRuntime> restored = store.RuntimeFor(def);
+
+            Assert.That(restored.IsSuccess, Is.True);
+            Assert.That(restored.Value.State, Is.EqualTo(AnchorState.Unlooted));
+            Assert.That(restored.Value.UsesRemaining, Is.EqualTo(2));
         }
 
         [Test]
