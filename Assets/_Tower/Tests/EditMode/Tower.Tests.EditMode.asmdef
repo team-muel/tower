@@ -6,7 +6,8 @@
     "Tower.Combat",
     "Tower.Gen",
     "Tower.UI",
-    "Tower.Data"
+    "Tower.Data",
+    "Tower.Floor"
   ],
   "includePlatforms": [
     "Editor"
