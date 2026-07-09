@@ -54,3 +54,7 @@ crashlytics-build.properties
 unity_*.log
 test_results.xml
 TestResults-*.xml
+
+# QA capture artifacts (not source)
+/Assets/Screenshots/
+/Assets/Screenshots.meta
