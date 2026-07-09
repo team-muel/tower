@@ -58,3 +58,7 @@ TestResults-*.xml
 # QA capture artifacts (not source)
 /Assets/Screenshots/
 /Assets/Screenshots.meta
+
+# Unity crash-recovery scratch (not source)
+/Assets/_Recovery/
+/Assets/_Recovery.meta
