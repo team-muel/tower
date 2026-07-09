@@ -1,7 +1,7 @@
 namespace Tower.Floor
 {
     // Pure, engine-agnostic PRNG (xorshift32) with an FNV-1a seed mixer. No
-    // UnityEngine.Random, no shared mutable state: identical (seed, salt) always
+    // No engine RNG, no shared mutable state: identical (seed, salt) always
     // produces the identical stream, so all derived forest content is deterministic
     // and reproducible across platforms and runs.
     public struct DeterministicRng
@@ -60,6 +60,45 @@ namespace Tower.Floor
             }
 
             return minInclusive + (int)(NextUInt() % (uint)(maxExclusive - minInclusive));
+        }
+
+        private static uint Fnv(uint h, uint value)
+        {
+            unchecked
+            {
+                for (int i = 0; i < 4; i++)
+                {
+                    byte b = (byte)((value >> (i * 8)) & 0xFF);
+                    h = (h ^ b) * 16777619u;
+                }
+
+                return h;
+            }
+        }
+    }
+
+    public static class PropPrefabSelector
+    {
+        public static int PickIndex(int seed, int nodeId, int slot, int count)
+        {
+            if (count <= 0)
+            {
+                return -1;
+            }
+
+            if (count == 1)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                uint h = 2166136261u;
+                h = Fnv(h, (uint)seed);
+                h = Fnv(h, (uint)nodeId);
+                h = Fnv(h, (uint)slot);
+                return (int)(h % (uint)count);
+            }
         }
 
         private static uint Fnv(uint h, uint value)

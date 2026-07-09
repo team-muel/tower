@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Tower.Floor
 {
-    // Pure, engine-agnostic (no MonoBehaviour, no UnityEngine.Random) deterministic
+    // Pure, engine-agnostic (no MonoBehaviour, no engine RNG) deterministic
     // generator of a node's forest content from (seed, nodeId, field). Identical
     // inputs always yield an identical ForestContentPlan; different node ids or seeds
     // diverge. The renderer turns this plan into GameObjects and grounds it onto the
