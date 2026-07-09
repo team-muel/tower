@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using Tower.Core;
@@ -7,6 +8,13 @@ using UnityEngine;
 
 namespace Tower.Floor
 {
+    [Serializable]
+    public struct AnchorPrefabEntry
+    {
+        public InteractableKind Kind;
+        public GameObject Prefab;
+    }
+
     // T40b: renders the 1층계(숲) as a WALKABLE space and drives visible fork traversal
     // + Ascend. Consumes FloorGraph (Tower.Gen) + an IFloorLayoutSource (decoupled from
     // Core FloorLayout) + BiomeTheme.Forest. Per node it builds terrain (HeightFieldFactory
@@ -43,6 +51,16 @@ namespace Tower.Floor
 
         [Header("Ascend")]
         [SerializeField] private AscendController ascend;
+
+        [Header("Prefabs (optional - falls back to primitives when empty)")]
+        [SerializeField] private GameObject[] treePrefabs;
+        [SerializeField] private GameObject[] rockPrefabs;
+        [SerializeField] private GameObject[] bushPrefabs;
+        [SerializeField] private AnchorPrefabEntry[] anchorPrefabs;
+        [SerializeField] private GameObject exitMarkerPrefab;
+        [SerializeField] private GameObject bossMarkerPrefab;
+        [SerializeField] private GameObject eventMarkerPrefab;
+        [SerializeField] private GameObject playerPrefab;
 
         private FloorGraph _graph;
         private IFloorLayoutSource _layout;
@@ -152,11 +170,11 @@ namespace Tower.Floor
 
             Transform trees = new GameObject("Trees").transform;
             trees.SetParent(parent, false);
-            foreach (ForestProp t in plan.Trees) BuildTree(node.Id, t, trees);
+            for (int i = 0; i < plan.Trees.Count; i++) BuildTree(node.Id, i, plan.Trees[i], trees);
 
             Transform rocks = new GameObject("Rocks").transform;
             rocks.SetParent(parent, false);
-            foreach (ForestProp r in plan.Rocks) BuildRock(node.Id, r, rocks);
+            for (int i = 0; i < plan.Rocks.Count; i++) BuildRock(node.Id, i, plan.Rocks[i], rocks);
 
             BuildPathStrip(node.Id, plan.PathWaypoints, parent);
             BuildAnchors(node, field, plan.Clearing, parent);
@@ -188,6 +206,23 @@ namespace Tower.Floor
         private void BuildAnchorObject(int nodeId, PlacedAnchor a, Transform parent)
         {
             AnchorVisual(a.Kind, out PrimitiveType prim, out Vector3 scale, out Color color);
+            GameObject prefab = ResolveAnchorPrefab(a.Kind);
+            if (prefab != null)
+            {
+                float prefabGy = GroundY(nodeId, a.Position.x, a.Position.z);
+                GameObject prefabAnchor = Instantiate(prefab, parent);
+                prefabAnchor.name = $"Anchor_{a.Def.Id}";
+                if (TryGroundPrefabInstance(prefabAnchor, a.Position.x, prefabGy, a.Position.z))
+                {
+                    AnchorMarker prefabMarker = prefabAnchor.GetComponent<AnchorMarker>() ??
+                                                prefabAnchor.AddComponent<AnchorMarker>();
+                    prefabMarker.Bind(nodeId, a.Def.Id, a.Kind, color);
+                    return;
+                }
+
+                DestroyGenerated(prefabAnchor);
+            }
+
             float gy = GroundY(nodeId, a.Position.x, a.Position.z);
             GameObject go = GameObject.CreatePrimitive(prim);
             go.name = $"Anchor_{a.Def.Id}";
@@ -255,8 +290,10 @@ namespace Tower.Floor
             wic.Bind(this, playerTransform);
         }
 
-        private void BuildTree(int nodeId, ForestProp t, Transform parent)
+        private void BuildTree(int nodeId, int slot, ForestProp t, Transform parent)
         {
+            if (TryBuildPropPrefab(treePrefabs, nodeId, slot, t, "Tree", parent)) return;
+
             float gy = GroundY(nodeId, t.Position.x, t.Position.z);
             GameObject trunk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             trunk.name = "Tree";
@@ -281,8 +318,10 @@ namespace Tower.Floor
             }
         }
 
-        private void BuildRock(int nodeId, ForestProp r, Transform parent)
+        private void BuildRock(int nodeId, int slot, ForestProp r, Transform parent)
         {
+            if (TryBuildPropPrefab(rockPrefabs, nodeId, slot, r, "Rock", parent)) return;
+
             float gy = GroundY(nodeId, r.Position.x, r.Position.z);
             GameObject rock = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             rock.name = "Rock";
@@ -312,6 +351,16 @@ namespace Tower.Floor
 
         private void BuildMarker(FloorNode node, FloorFieldRect field, Transform parent)
         {
+            GameObject markerPrefab = ResolveMarkerPrefab(node);
+            if (markerPrefab != null)
+            {
+                float prefabGy = GroundY(node.Id, field.Center.x, field.Center.z);
+                GameObject marker = Instantiate(markerPrefab, parent);
+                marker.name = node.IsExit ? "ExitMarker" : (node.IsBossRoom ? "BossMarker" : "EventMarker");
+                if (TryGroundPrefabInstance(marker, field.Center.x, prefabGy, field.Center.z)) return;
+                DestroyGenerated(marker);
+            }
+
             // v0 placeholder: a distinct post + sign cube for event/exit/boss slots.
             float gy = GroundY(node.Id, field.Center.x, field.Center.z);
             GameObject post = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -447,13 +496,24 @@ namespace Tower.Floor
         {
             if (playerTransform == null)
             {
-                GameObject player = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                GameObject player = playerPrefab != null
+                    ? Instantiate(playerPrefab, transform)
+                    : GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 player.name = "ForestPlayer";
-                player.transform.SetParent(transform, false);
-                Rigidbody rb = player.AddComponent<Rigidbody>();
+                if (playerPrefab == null)
+                {
+                    player.transform.SetParent(transform, false);
+                }
+
+                Rigidbody rb = player.GetComponent<Rigidbody>();
+                if (rb == null) rb = player.AddComponent<Rigidbody>();
                 rb.isKinematic = true;
                 rb.useGravity = false;
-                Paint(player, new Color(0.95f, 0.9f, 0.6f));
+                if (playerPrefab == null)
+                {
+                    Paint(player, new Color(0.95f, 0.9f, 0.6f));
+                }
+
                 playerTransform = player.transform;
             }
 
@@ -583,6 +643,104 @@ namespace Tower.Floor
             Collider col = go.GetComponent<Collider>();
             if (col == null) return;
             if (Application.isPlaying) Destroy(col); else DestroyImmediate(col);
+        }
+
+        private bool TryBuildPropPrefab(GameObject[] prefabs, int nodeId, int slot, ForestProp prop,
+                                        string objectName, Transform parent)
+        {
+            int index = PropPrefabSelector.PickIndex(_graph.Seed, nodeId, slot, prefabs != null ? prefabs.Length : 0);
+            if (index < 0) return false;
+
+            GameObject prefab = prefabs[index];
+            if (prefab == null) return false;
+
+            GameObject go = Instantiate(prefab, parent);
+            go.name = objectName;
+            go.transform.rotation = Quaternion.Euler(0f, prop.YawDegrees, 0f);
+            if (!TryEncapsulateRenderers(go, out Bounds bounds))
+            {
+                DestroyGenerated(go);
+                return false;
+            }
+
+            float scale = bounds.size.y > 0.0001f ? prop.Height / bounds.size.y : 1f;
+            go.transform.localScale = Vector3.one * Mathf.Clamp(scale, 0.3f, 2.5f);
+            if (!TryEncapsulateRenderers(go, out bounds))
+            {
+                DestroyGenerated(go);
+                return false;
+            }
+
+            float gy = GroundY(nodeId, prop.Position.x, prop.Position.z);
+            go.transform.position += new Vector3(
+                prop.Position.x - go.transform.position.x,
+                gy - bounds.min.y,
+                prop.Position.z - go.transform.position.z);
+            return true;
+        }
+
+        private GameObject ResolveAnchorPrefab(InteractableKind kind)
+        {
+            if (anchorPrefabs == null) return null;
+            for (int i = 0; i < anchorPrefabs.Length; i++)
+            {
+                if (anchorPrefabs[i].Kind == kind && anchorPrefabs[i].Prefab != null)
+                {
+                    return anchorPrefabs[i].Prefab;
+                }
+            }
+
+            return null;
+        }
+
+        private GameObject ResolveMarkerPrefab(FloorNode node)
+        {
+            if (node.IsExit) return exitMarkerPrefab;
+            if (node.IsBossRoom) return bossMarkerPrefab;
+            if (TrailNavigator.IsEventNode(node)) return eventMarkerPrefab;
+            return null;
+        }
+
+        private static bool TryGroundPrefabInstance(GameObject go, float x, float groundY, float z)
+        {
+            if (!TryEncapsulateRenderers(go, out Bounds bounds))
+            {
+                return false;
+            }
+
+            go.transform.position += new Vector3(
+                x - go.transform.position.x,
+                groundY - bounds.min.y,
+                z - go.transform.position.z);
+            return true;
+        }
+
+        private static bool TryEncapsulateRenderers(GameObject go, out Bounds bounds)
+        {
+            Renderer[] renderers = go.GetComponentsInChildren<Renderer>();
+            bounds = default;
+            bool hasBounds = false;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (!renderers[i].enabled) continue;
+                if (!hasBounds)
+                {
+                    bounds = renderers[i].bounds;
+                    hasBounds = true;
+                }
+                else
+                {
+                    bounds.Encapsulate(renderers[i].bounds);
+                }
+            }
+
+            return hasBounds;
+        }
+
+        private static void DestroyGenerated(GameObject go)
+        {
+            if (go == null) return;
+            if (Application.isPlaying) Destroy(go); else DestroyImmediate(go);
         }
 
         private Material ResolveTerrainMaterial()
