@@ -1,3 +1,4 @@
+using Tower.Core;
 using UnityEngine;
 
 // WASD (camera-relative) + right-click move-to, faces movement, snaps to ground so you can walk up slopes.
@@ -9,17 +10,47 @@ public class PlayerIsoController : MonoBehaviour
     public float groundSnapUp = 3f;
     public float groundSnapDown = 8f;
 
+    [Header("Animation")]
+    [SerializeField] private Animator animator;
+    [SerializeField] private string speedParameter = "Speed";
+    [SerializeField] private bool normalizeSpeed = true;
+    [SerializeField, Min(0f)] private float speedDamping = 0.12f;
+
     private Transform camT;
     private Camera cam;
     private Vector3 destination;
     private bool hasDestination;
     private float fallbackY;
+    private Vector3 _prevPos;
+    private int _speedHash;
+    private bool _animatorReady;
 
     void Start()
     {
         var camGo = GameObject.Find("PlayerCamera");
         if (camGo != null) { camT = camGo.transform; cam = camGo.GetComponent<Camera>(); }
         fallbackY = transform.position.y;
+        _prevPos = transform.position;
+
+        if (animator == null) animator = GetComponentInChildren<Animator>();
+        if (animator == null) return;
+
+        _speedHash = Animator.StringToHash(speedParameter);
+        foreach (AnimatorControllerParameter parameter in animator.parameters)
+        {
+            if (parameter.nameHash == _speedHash && parameter.type == AnimatorControllerParameterType.Float)
+            {
+                _animatorReady = true;
+                break;
+            }
+        }
+
+        if (!_animatorReady)
+        {
+            Debug.LogWarning(
+                $"PlayerIsoController disabled Animator driving because float parameter '{speedParameter}' was not found.",
+                this);
+        }
     }
 
     void Update()
@@ -70,5 +101,13 @@ public class PlayerIsoController : MonoBehaviour
         }
         pos.y = found ? best : fallbackY;
         transform.position = pos;
+
+        if (_animatorReady)
+        {
+            float planar = PlayerLocomotion.PlanarSpeed(_prevPos, transform.position, Time.deltaTime);
+            float value = normalizeSpeed ? PlayerLocomotion.SpeedFactor(planar, moveSpeed) : planar;
+            animator.SetFloat(_speedHash, value, speedDamping, Time.deltaTime);
+        }
+        _prevPos = transform.position;
     }
 }
