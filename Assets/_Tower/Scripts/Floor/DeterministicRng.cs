@@ -1,7 +1,7 @@
 namespace Tower.Floor
 {
     // Pure, engine-agnostic PRNG (xorshift32) with an FNV-1a seed mixer. No
-    // No engine RNG, no shared mutable state: identical (seed, salt) always
+    // engine RNG, no shared mutable state: identical (seed, salt) always
     // produces the identical stream, so all derived forest content is deterministic
     // and reproducible across platforms and runs.
     public struct DeterministicRng
