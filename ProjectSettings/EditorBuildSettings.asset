@@ -6,17 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/_Tower/Scenes/Boot.unity
-    guid: 86c500bf8bdf5ed478884721d277dc21
-  - enabled: 1
-    path: Assets/_Tower/Scenes/Camp.unity
-    guid: 2ae7d4e7a7e508b4da8d0d238eae0531
-  - enabled: 1
-    path: Assets/_Tower/Scenes/Loadout.unity
-    guid: e71302b284affbe4484d1479667f8bb9
-  - enabled: 1
-    path: Assets/_Tower/Scenes/Expedition.unity
-    guid: dbef66ae4a7f7ff47bd1ed76ac2fbe35
+    path: Assets/_Tower/Scenes/Prototype.unity
+    guid: 80ba9a5796e04aa46a7622f396a7131e
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0
