@@ -22958,14 +22958,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ae07c6e923d1889488703c66d89a8865, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::IsoCameraFollow
-  target: {fileID: 0}
+  target: {fileID: 1028390862}
   lookHeight: 1.1
   distance: 14
   yaw: 200
-  basePitch: 40
+  basePitch: 35
   pitchRange: 10
-  yawSensitivity: 10
-  pitchSensitivity: 4
+  yawSensitivity: 7.5
+  pitchSensitivity: 3
   pitchReturnLerp: 6
   followLerp: 8
   zoomSpeed: 4
