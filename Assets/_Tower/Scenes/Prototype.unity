@@ -8583,6 +8583,10 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 4540229000190281644, guid: 60770bdb4dc667c45bea53db0339dc05, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: e3edabcfa4bc1bd4eb50c08190d4a100, type: 2}
     - target: {fileID: 4561406473548200586, guid: 60770bdb4dc667c45bea53db0339dc05, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -8635,6 +8639,11 @@ PrefabInstance:
 --- !u!4 &381030122 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 1438546959266459337, guid: 60770bdb4dc667c45bea53db0339dc05, type: 3}
+  m_PrefabInstance: {fileID: 381030121}
+  m_PrefabAsset: {fileID: 0}
+--- !u!95 &381030123 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 4540229000190281644, guid: 60770bdb4dc667c45bea53db0339dc05, type: 3}
   m_PrefabInstance: {fileID: 381030121}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &386101310
@@ -22041,6 +22050,10 @@ MonoBehaviour:
   arriveDistance: 0.2
   groundSnapUp: 3
   groundSnapDown: 8
+  animator: {fileID: 381030123}
+  speedParameter: Speed
+  normalizeSpeed: 1
+  speedDamping: 0.12
 --- !u!54 &1028390864
 Rigidbody:
   m_ObjectHideFlags: 0
