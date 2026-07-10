@@ -6,7 +6,8 @@ namespace Tower.Gen
 {
     // 층계 골격 생성기(node+route 모델, 74 §6/§8). 격자 방·격자 문 생성은 폐기.
     // 노드 스켈레톤(id/depth/kind/roomTemplateId/flags) + 갈림길(route) 종류를
-    // BiomeDef 가중으로 결정적으로 배정한다. 조우/전투 격자는 T49에서 제거됐다.
+    // BiomeDef 가중으로 결정적으로 배정한다. 조우/전투 격자는 노드에 두지 않고
+    // FloorNodeBinder가 런타임에 lazy 바인딩한다(격자 제거).
     public static class FloorGenerator
     {
         public static FloorGraph Generate(FloorGenParams parameters)

@@ -1,24 +1,26 @@
 using System;
+using Tower.Core;
+
 namespace Tower.Gen
 {
     // 노드의 lazy 바인딩 런타임 내용(74 §2 "런타임 FloorNodeContent 별도").
-    // 골격 노드(FloorNode)는 전투 격자/조우를 들지 않는다. 현재는 숲 렌더러와
-    // 미리보기가 필요한 결정적 공간 치수만 바인딩한다.
+    // 골격 노드(FloorNode)는 격자/조우를 들지 않는다. 조우 자리에 실제로 들어설 때
+    // roomTemplateId + seed로부터 결정적으로 전투 격자(Battlefield)와 조우(Encounter)를 만든다.
     public sealed class FloorNodeContent
     {
-        public FloorNodeContent(int nodeId, int width, int height)
+        public FloorNodeContent(int nodeId, GridMap battlefield, FloorEncounter encounter)
         {
             if (nodeId < 0) throw new ArgumentOutOfRangeException(nameof(nodeId));
-            if (width <= 0) throw new ArgumentOutOfRangeException(nameof(width));
-            if (height <= 0) throw new ArgumentOutOfRangeException(nameof(height));
+            if (battlefield == null) throw new ArgumentNullException(nameof(battlefield));
+            if (encounter == null) throw new ArgumentNullException(nameof(encounter));
 
             NodeId = nodeId;
-            Width = width;
-            Height = height;
+            Battlefield = battlefield;
+            Encounter = encounter;
         }
 
         public int NodeId { get; }
-        public int Width { get; }
-        public int Height { get; }
+        public GridMap Battlefield { get; }
+        public FloorEncounter Encounter { get; }
     }
 }

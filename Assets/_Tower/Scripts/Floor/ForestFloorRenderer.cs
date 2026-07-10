@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Tower.Core;
 using Tower.Gen;
+using Tower.UI;
 using UnityEngine;
 
 namespace Tower.Floor
@@ -100,6 +101,8 @@ namespace Tower.Floor
                 new IntRange(nodeCount, nodeCount),
                 isBossFloor,
                 new IntRange(8, 14),
+                new[] { "melee", "ranged", "elite" },
+                "boss",
                 includeCamp,
                 biomeId);
 
