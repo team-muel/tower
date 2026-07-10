@@ -49,6 +49,8 @@ namespace Tower.Floor
                 new IntRange(nodeCount, nodeCount),
                 isBossFloor,
                 new IntRange(8, 14),
+                new[] { "melee", "ranged", "elite" },
+                "boss",
                 includeCamp,
                 biomeId);
 

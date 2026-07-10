@@ -14,6 +14,8 @@ namespace Tower.EditorTools
         // Old Boot/Camp/Loadout/Expedition menu-slice scenes are deprecated; WireScenes()
         // regenerated them empty and clobbered EditorBuildSettings, so it is no longer called.
         // The runtime URP-Lit magenta guard (TowerRuntimeLit.mat) already lives in Resources.
+        // T49: demolition removed the old code-generated Boot/Camp/Loadout/Expedition
+        // slice (PlayableSceneWiring + Tower.UI) outright; Prototype remains the single entry.
         private static readonly string[] Scenes =
         {
             "Assets/_Tower/Scenes/Prototype.unity"
