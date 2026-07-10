@@ -173,8 +173,6 @@ namespace Tower.Tests.EditMode
                 new IntRange(5, 5),
                 isBossFloor,
                 new IntRange(8, 8),
-                new[] { "melee", "ranged", "elite" },
-                "boss",
                 includeCamp);
         }
 

@@ -55,13 +55,10 @@ namespace Tower.Core
             UnitRadius = unitRadius;
         }
 
-        // Battle area from a generated room's grid footprint
-        // (1 cell = BattleScale.UnitsPerCell analog units).
+        // Battle area from generated room dimensions.
         public static AnalogBattlefield FromRoom(int cellWidth, int cellHeight)
         {
-            return new AnalogBattlefield(
-                cellWidth * BattleScale.UnitsPerCell,
-                cellHeight * BattleScale.UnitsPerCell);
+            return new AnalogBattlefield(cellWidth, cellHeight);
         }
 
         public CombatSpaceMode Mode

@@ -2,9 +2,8 @@ using System.Collections.Generic;
 
 namespace Tower.Core
 {
-    // T20: one candidate reposition from GetMoveCandidates. Cost is the
-    // movement points the move consumes (grid: BFS path length; analog:
-    // euclidean length of the clamped straight-line move).
+    // One candidate reposition from GetMoveCandidates. Cost is the movement
+    // points consumed by the clamped move.
     public readonly struct BattleMoveCandidate
     {
         public BattleMoveCandidate(BattlePos position, float cost)
@@ -25,16 +24,15 @@ namespace Tower.Core
     {
         CombatSpaceMode Mode { get; }
 
-        // Area extents in analog units (grid: cells * BattleScale.UnitsPerCell).
+        // Area extents in analog units.
         float Width { get; }
         float Height { get; }
 
         bool Contains(BattlePos pos);
 
-        // Grid preserves legacy Manhattan values; analog is euclidean.
         float Distance(BattlePos a, BattlePos b);
 
-        // Melee-contact test (grid: Manhattan == 1; analog: within melee range).
+        // Melee-contact test.
         bool AreAdjacent(BattlePos a, BattlePos b);
 
         bool HasLineOfSight(BattlePos from, BattlePos to);

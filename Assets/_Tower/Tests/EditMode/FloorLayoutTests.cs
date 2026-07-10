@@ -104,9 +104,7 @@ namespace Tower.Tests.EditMode
                 seed,
                 new IntRange(5, 5),
                 false,
-                new IntRange(8, 8),
-                new[] { "melee", "ranged" },
-                "boss");
+                new IntRange(8, 8));
             return FloorGenerator.Generate(parameters);
         }
     }

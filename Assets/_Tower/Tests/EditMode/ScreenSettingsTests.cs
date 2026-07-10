@@ -1,5 +1,5 @@
 using NUnit.Framework;
-using Tower.UI;
+using Tower.Core;
 using UnityEngine;
 
 namespace Tower.Tests.EditMode

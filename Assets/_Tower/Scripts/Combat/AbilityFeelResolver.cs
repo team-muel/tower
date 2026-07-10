@@ -10,14 +10,14 @@ namespace Tower.Combat
         public static readonly ResolvedAbilityFeel Consume = new ResolvedAbilityFeel(
             120, 0.38f, DamagePopupStyle.Consume, AbilityApproachTween.Lunge, string.Empty);
 
-        public ResolvedAbilityFeel ResolveTurnFeel(TurnPresentationEvent presentationEvent, AbilityFeelCatalog catalog)
+        public ResolvedAbilityFeel ResolveCommandFeel(UseAbilityCommand command, AbilityFeelCatalog catalog)
         {
-            if (presentationEvent.Type != TurnPresentationEventType.Ability)
+            if (command == null)
             {
                 return Normal;
             }
 
-            return ResolveAbilityFeel(presentationEvent.AbilityId, catalog, defeated: false);
+            return ResolveAbilityFeel(command.AbilityId, catalog, defeated: false);
         }
 
         public ResolvedAbilityFeel ResolveDamageFeel(CombatDamageEvent damageEvent, AbilityFeelCatalog catalog)

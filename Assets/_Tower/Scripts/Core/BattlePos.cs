@@ -3,9 +3,7 @@ using System.Globalization;
 
 namespace Tower.Core
 {
-    // T20: continuous battlefield coordinate. One analog unit equals one
-    // legacy grid cell (see BattleScale), so existing integer ranges and
-    // movement budgets keep their numeric meaning unchanged.
+    // Continuous battlefield coordinate.
     public readonly struct BattlePos : IEquatable<BattlePos>
     {
         public readonly float X;

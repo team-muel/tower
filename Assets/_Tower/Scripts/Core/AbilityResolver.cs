@@ -6,9 +6,6 @@ namespace Tower.Core
     // Resolves an AbilityDef use by a combatant on a unit or point target:
     // validates target type, range and line of sight through IBattlefield,
     // then applies tag semantics (Apply/Consume/Amplify) and damage.
-    // T20: grid mode keeps its legacy rules (Manhattan range, Bresenham LoS)
-    // via GridBattlefieldAdapter; analog mode uses euclidean range and
-    // always-clear LoS (v0).
     public sealed class AbilityResolver : IAbilityExecutor
     {
         // v0: consuming a mark multiplies base power by this bonus. Kept as a
@@ -28,16 +25,6 @@ namespace Tower.Core
 
         public StatusBoard StatusBoard => statusBoard;
 
-        public static Result<AbilityResolver> Create(GridMap map, StatusBoard statusBoard, ICombatObserver combatObserver = null)
-        {
-            if (map == null)
-            {
-                return Result<AbilityResolver>.Failure("Grid map is required.");
-            }
-
-            return Create(new GridBattlefieldAdapter(map), statusBoard, combatObserver);
-        }
-
         public static Result<AbilityResolver> Create(IBattlefield battlefield, StatusBoard statusBoard, ICombatObserver combatObserver = null)
         {
             if (battlefield == null)
@@ -53,11 +40,11 @@ namespace Tower.Core
             return Result<AbilityResolver>.Success(new AbilityResolver(battlefield, statusBoard, combatObserver));
         }
 
-        public Result Execute(TurnEngine engine, UseAbilityCommand command)
+        public Result Execute(CombatState state, UseAbilityCommand command)
         {
-            if (engine == null)
+            if (state == null)
             {
-                return Result.Failure("Turn engine is required.");
+                return Result.Failure("Combat state is required.");
             }
 
             if (command == null)
@@ -65,13 +52,18 @@ namespace Tower.Core
                 return Result.Failure("Command is required.");
             }
 
-            var caster = engine.GetCombatant(command.UnitId);
+            if (state.IsCombatEnded)
+            {
+                return Result.Failure("Combat has ended.");
+            }
+
+            var caster = state.GetCombatant(command.UnitId);
             if (caster == null)
             {
                 return Result.Failure("Unknown caster.");
             }
 
-            if (!engine.IsAlive(command.UnitId))
+            if (!state.IsAlive(command.UnitId))
             {
                 return Result.Failure("Caster is defeated.");
             }
@@ -82,16 +74,21 @@ namespace Tower.Core
                 return Result.Failure($"Caster does not have ability '{command.AbilityId}'.");
             }
 
-            var currentRound = engine.RoundNumber;
-            statusBoard.OnRoundAdvanced(currentRound);
+            if (caster.State.RemainingCooldown(ability.Id) > 0)
+            {
+                return Result.Failure($"Ability '{command.AbilityId}' is on cooldown.");
+            }
+
+            var elapsedSeconds = state.ElapsedSeconds;
+            statusBoard.PruneExpired(elapsedSeconds);
 
             var casterPosition = battlefield.FindOccupant(command.UnitId);
             if (!casterPosition.HasValue)
             {
-                return Result.Failure("Caster is not on the grid.");
+                return Result.Failure("Caster is not on the battlefield.");
             }
 
-            var target = ResolveTarget(engine, caster, ability, command);
+            var target = ResolveTarget(state, caster, ability, command);
             if (target.IsFailure)
             {
                 return Result.Failure(target.Error);
@@ -110,17 +107,34 @@ namespace Tower.Core
             switch (ability.Tag)
             {
                 case AbilityTag.Apply:
-                    return ExecuteApply(engine, caster, ability, target.Value, currentRound);
+                    return Finish(state, command, ability, ExecuteApply(state, caster, ability, target.Value, elapsedSeconds));
                 case AbilityTag.Consume:
-                    return ExecuteConsume(engine, caster, ability, target.Value, currentRound);
+                    return Finish(state, command, ability, ExecuteConsume(state, caster, ability, target.Value, elapsedSeconds));
                 case AbilityTag.Amplify:
-                    return ExecuteAmplify(caster, ability, target.Value, currentRound);
+                    return Finish(state, command, ability, ExecuteAmplify(caster, ability, target.Value, elapsedSeconds));
                 default:
                     return Result.Failure("Ability tag is not executable.");
             }
         }
 
-        private Result ExecuteApply(TurnEngine engine, CombatantRef caster, AbilityDef ability, TargetContext target, int currentRound)
+        private Result Finish(CombatState state, UseAbilityCommand command, AbilityDef ability, Result result)
+        {
+            if (result.IsFailure)
+            {
+                return result;
+            }
+
+            var cooled = state.RecordCooldown(command.UnitId, ability);
+            if (cooled.IsFailure)
+            {
+                return cooled;
+            }
+
+            combatObserver?.OnAbilityResolved(state, command);
+            return Result.Success();
+        }
+
+        private Result ExecuteApply(CombatState state, CombatantRef caster, AbilityDef ability, TargetContext target, float elapsedSeconds)
         {
             if (target.Unit == null)
             {
@@ -130,17 +144,17 @@ namespace Tower.Core
 
             if (ability.TargetMark != null)
             {
-                var marked = statusBoard.ApplyMark(target.Unit.UnitId, ability.TargetMark, currentRound);
+                var marked = statusBoard.ApplyMark(target.Unit.UnitId, ability.TargetMark, elapsedSeconds);
                 if (marked.IsFailure)
                 {
                     return marked;
                 }
             }
 
-            return DealPowerDamage(engine, caster, target.Unit, ability, 1f, currentRound);
+            return DealPowerDamage(state, caster, target.Unit, ability, 1f, elapsedSeconds);
         }
 
-        private Result ExecuteConsume(TurnEngine engine, CombatantRef caster, AbilityDef ability, TargetContext target, int currentRound)
+        private Result ExecuteConsume(CombatState state, CombatantRef caster, AbilityDef ability, TargetContext target, float elapsedSeconds)
         {
             if (target.Unit == null)
             {
@@ -148,15 +162,15 @@ namespace Tower.Core
             }
 
             var consumedMark = ability.TargetMark != null
-                && statusBoard.HasMark(target.Unit.UnitId, ability.TargetMark.Id, currentRound)
+                && statusBoard.HasMark(target.Unit.UnitId, ability.TargetMark.Id, elapsedSeconds)
                 && statusBoard.RemoveMark(target.Unit.UnitId, ability.TargetMark.Id);
 
             // Consuming without the mark is not a failure: base power still applies.
             var tagMultiplier = consumedMark ? ConsumeBonusMultiplier : 1f;
-            return DealPowerDamage(engine, caster, target.Unit, ability, tagMultiplier, currentRound);
+            return DealPowerDamage(state, caster, target.Unit, ability, tagMultiplier, elapsedSeconds);
         }
 
-        private Result ExecuteAmplify(CombatantRef caster, AbilityDef ability, TargetContext target, int currentRound)
+        private Result ExecuteAmplify(CombatantRef caster, AbilityDef ability, TargetContext target, float elapsedSeconds)
         {
             if (target.Unit == null)
             {
@@ -169,10 +183,10 @@ namespace Tower.Core
             }
 
             // v0: re-applying refreshes the status instead of stacking.
-            return statusBoard.ApplyAmplify(target.Unit.UnitId, ability.AmplificationMultiplier, currentRound);
+            return statusBoard.ApplyAmplify(target.Unit.UnitId, ability.AmplificationMultiplier, elapsedSeconds);
         }
 
-        private Result DealPowerDamage(TurnEngine engine, CombatantRef caster, CombatantRef target, AbilityDef ability, float tagMultiplier, int currentRound)
+        private Result DealPowerDamage(CombatState state, CombatantRef caster, CombatantRef target, AbilityDef ability, float tagMultiplier, float elapsedSeconds)
         {
             if (ability.BasePower <= 0)
             {
@@ -181,41 +195,41 @@ namespace Tower.Core
                 return Result.Success();
             }
 
-            var amplifyMultiplier = statusBoard.TryConsumeAmplify(caster.UnitId, currentRound, out var consumedMultiplier)
+            var amplifyMultiplier = statusBoard.TryConsumeAmplify(caster.UnitId, elapsedSeconds, out var consumedMultiplier)
                 ? consumedMultiplier
                 : 1f;
             var power = ability.BasePower * tagMultiplier * amplifyMultiplier;
             var raw = power + caster.State.Definition.Attack - target.State.Definition.Defense;
             var damage = Math.Max(1, (int)Math.Round(raw, MidpointRounding.AwayFromZero));
-            return ApplyDamage(engine, caster, target, ability, damage);
+            return ApplyDamage(state, caster, target, ability, damage);
         }
 
-        private Result ApplyDamage(TurnEngine engine, CombatantRef caster, CombatantRef target, AbilityDef ability, int damage)
+        private Result ApplyDamage(CombatState state, CombatantRef caster, CombatantRef target, AbilityDef ability, int damage)
         {
-            var state = target.State;
-            var appliedDamage = Math.Min(state.CurrentHp, damage);
-            var newHp = Math.Max(0, state.CurrentHp - damage);
+            var targetState = target.State;
+            var appliedDamage = Math.Min(targetState.CurrentHp, damage);
+            var newHp = Math.Max(0, targetState.CurrentHp - damage);
             var updated = CharacterState.Create(
-                state.Definition,
+                targetState.Definition,
                 newHp,
-                state.DeathCount,
-                state.SpeedModifier,
-                state.Loadout.SlotCount,
-                state.Loadout.Abilities.ToArray(),
-                state.AbilityCooldowns);
+                targetState.DeathCount,
+                targetState.SpeedModifier,
+                targetState.Loadout.SlotCount,
+                targetState.Loadout.Abilities.ToArray(),
+                targetState.AbilityCooldowns);
             if (updated.IsFailure)
             {
                 return Result.Failure(updated.Error);
             }
 
-            var applied = engine.UpdateCombatantState(target.UnitId, updated.Value);
+            var applied = state.UpdateCombatantState(target.UnitId, updated.Value);
             if (applied.IsFailure)
             {
                 return applied;
             }
 
             combatObserver?.OnDamageApplied(
-                engine,
+                state,
                 new CombatDamageEvent(
                     caster.UnitId,
                     target.UnitId,
@@ -232,34 +246,34 @@ namespace Tower.Core
             return Result.Success();
         }
 
-        private Result<TargetContext> ResolveTarget(TurnEngine engine, CombatantRef caster, AbilityDef ability, UseAbilityCommand command)
+        private Result<TargetContext> ResolveTarget(CombatState state, CombatantRef caster, AbilityDef ability, UseAbilityCommand command)
         {
             switch (ability.TargetType)
             {
                 case AbilityTargetType.Enemy:
                 case AbilityTargetType.Ally:
-                    return ResolveUnitTarget(engine, caster, ability, command);
+                    return ResolveUnitTarget(state, caster, ability, command);
                 case AbilityTargetType.Cell:
-                    return ResolvePointTarget(engine, command);
+                    return ResolvePointTarget(state, command);
                 default:
                     return Result<TargetContext>.Failure("Unsupported target type.");
             }
         }
 
-        private Result<TargetContext> ResolveUnitTarget(TurnEngine engine, CombatantRef caster, AbilityDef ability, UseAbilityCommand command)
+        private Result<TargetContext> ResolveUnitTarget(CombatState state, CombatantRef caster, AbilityDef ability, UseAbilityCommand command)
         {
             if (string.IsNullOrWhiteSpace(command.TargetUnitId))
             {
                 return Result<TargetContext>.Failure("Ability requires a unit target.");
             }
 
-            var target = engine.GetCombatant(command.TargetUnitId);
+            var target = state.GetCombatant(command.TargetUnitId);
             if (target == null)
             {
                 return Result<TargetContext>.Failure("Unknown target unit.");
             }
 
-            if (!engine.IsAlive(command.TargetUnitId))
+            if (!state.IsAlive(command.TargetUnitId))
             {
                 return Result<TargetContext>.Failure("Target is defeated.");
             }
@@ -277,33 +291,29 @@ namespace Tower.Core
             var position = battlefield.FindOccupant(target.UnitId);
             if (!position.HasValue)
             {
-                return Result<TargetContext>.Failure("Target is not on the grid.");
+                return Result<TargetContext>.Failure("Target is not on the battlefield.");
             }
 
             return Result<TargetContext>.Success(new TargetContext(target, position.Value));
         }
 
-        private Result<TargetContext> ResolvePointTarget(TurnEngine engine, UseAbilityCommand command)
+        private Result<TargetContext> ResolvePointTarget(CombatState state, UseAbilityCommand command)
         {
             BattlePos? point = command.TargetPoint;
-            if (!point.HasValue && command.TargetCell.HasValue)
-            {
-                point = BattleScale.ToBattlePos(command.TargetCell.Value);
-            }
 
             if (!point.HasValue)
             {
-                return Result<TargetContext>.Failure("Ability requires a cell target.");
+                return Result<TargetContext>.Failure("Ability requires a point target.");
             }
 
             if (!battlefield.Contains(point.Value))
             {
-                return Result<TargetContext>.Failure("Target cell is out of bounds.");
+                return Result<TargetContext>.Failure("Target point is out of bounds.");
             }
 
             var occupantId = battlefield.GetOccupantAt(point.Value);
-            var occupant = string.IsNullOrEmpty(occupantId) ? null : engine.GetCombatant(occupantId);
-            if (occupant != null && !engine.IsAlive(occupantId))
+            var occupant = string.IsNullOrEmpty(occupantId) ? null : state.GetCombatant(occupantId);
+            if (occupant != null && !state.IsAlive(occupantId))
             {
                 occupant = null;
             }

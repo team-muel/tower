@@ -3,7 +3,7 @@
   "rootNamespace": "Tower.EditorTools",
   "references": [
     "Tower.Core",
-    "Tower.UI"
+    "Tower.Floor"
   ],
   "includePlatforms": [
     "Editor"

@@ -11,7 +11,7 @@ namespace Tower.Tests.EditMode
         {
             FloorGenParams p = new FloorGenParams(
                 seed, new IntRange(nodes, nodes), false, new IntRange(8, 14),
-                new[] { "melee", "ranged", "elite" }, "boss", true, BiomeId.Forest);
+                includeCamp: true, biomeId: BiomeId.Forest);
             return FloorGenerator.Generate(p);
         }
 
