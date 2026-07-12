@@ -10,18 +10,17 @@ namespace Tower.EditorTools
     {
         public const string OutputPath = @"C:\Users\fancy\Tower\Builds\Tower\Tower.exe";
 
+        // 2026-07-12: repointed to Prototype (the single playable scene / live Build Settings).
+        // Old Boot/Camp/Loadout/Expedition menu-slice scenes are deprecated; WireScenes()
+        // regenerated them empty and clobbered EditorBuildSettings, so it is no longer called.
+        // The runtime URP-Lit magenta guard (TowerRuntimeLit.mat) already lives in Resources.
         private static readonly string[] Scenes =
         {
-            "Assets/_Tower/Scenes/Boot.unity",
-            "Assets/_Tower/Scenes/Camp.unity",
-            "Assets/_Tower/Scenes/Loadout.unity",
-            "Assets/_Tower/Scenes/Expedition.unity"
+            "Assets/_Tower/Scenes/Prototype.unity"
         };
 
         public static void BuildWindows64()
         {
-            PlayableSceneWiring.WireScenes();
-
             var directory = Path.GetDirectoryName(OutputPath);
             if (!string.IsNullOrEmpty(directory))
             {

@@ -38050,10 +38050,10 @@ MonoBehaviour:
   lookHeight: 1.1
   distance: 14
   yaw: 200
-  basePitch: 40
+  basePitch: 25
   pitchRange: 10
-  yawSensitivity: 3.5
-  pitchSensitivity: 2
+  yawSensitivity: 4
+  pitchSensitivity: 1.6
   pitchReturnLerp: 6
   followLerp: 8
   zoomSpeed: 4

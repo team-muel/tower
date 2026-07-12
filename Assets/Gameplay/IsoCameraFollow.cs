@@ -7,10 +7,10 @@ public class IsoCameraFollow : MonoBehaviour
     public float lookHeight = 1.1f;
     public float distance = 14f;
     public float yaw = 200f;
-    public float basePitch = 35f;          // 2026-07-09: 40 -> 35. Flatter, more cinematic.
+    public float basePitch = 25f;          // 2026-07-12: 35 -> 25. Lowered 10deg (flatter, more cinematic).
     public float pitchRange = 10f;         // how far pitch can move while dragging (deg)
-    public float yawSensitivity = 7.5f;    // no deltaTime: mouse delta drives it directly (free feel)
-    public float pitchSensitivity = 3f;    // kept at yawSensitivity * 0.4
+    public float yawSensitivity = 4f;      // 2026-07-12: 7.5 -> 4 (rotation was still too fast). mouse delta drives it directly
+    public float pitchSensitivity = 1.6f;  // kept at yawSensitivity * 0.4
     public float pitchReturnLerp = 6f;     // spring back to basePitch on release
     public float followLerp = 12f;
     public float zoomSpeed = 4f;
