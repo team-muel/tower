@@ -56,12 +56,21 @@ namespace Tower.Tests.EditMode
             int currentHp,
             AbilityDef[] abilities)
         {
-            var definition = Track(CharacterDef.CreateRuntime(unitId, unitId, 20, 0, 0, 10, DispositionType.Aggressive, abilities));
+            var assignedAbilities = abilities;
+            if (assignedAbilities == null || assignedAbilities.Length == 0)
+            {
+                assignedAbilities = new[]
+                {
+                    Track(AbilityDef.CreateRuntime(unitId + "-noop", AbilityTag.None, 0, 0, AbilityTargetType.Enemy))
+                };
+            }
+
+            var definition = Track(CharacterDef.CreateRuntime(unitId, unitId, 20, 0, 0, 10, DispositionType.Aggressive, assignedAbilities));
             var state = CharacterState.Create(
                 definition,
                 currentHp,
-                slotCount: abilities.Length,
-                assignedAbilities: abilities);
+                slotCount: assignedAbilities.Length,
+                assignedAbilities: assignedAbilities);
             Assert.That(state.IsSuccess, Is.True, state.Error);
             var combatant = CombatantRef.Create(unitId, team, state.Value);
             Assert.That(combatant.IsSuccess, Is.True, combatant.Error);
