@@ -208,13 +208,16 @@ namespace Tower.Combat
             }
 
             var isWindup = telegraph.Phase == TelegraphPhase.Windup;
-            windupRing.enabled = isWindup;
-            if (!isWindup)
+            var shouldShowResult = telegraph.Phase == TelegraphPhase.Commit || telegraph.Phase == TelegraphPhase.Recover;
+            windupRing.enabled = isWindup || shouldShowResult;
+            if (!windupRing.enabled)
             {
                 return;
             }
 
-            var progress = Mathf.Clamp01(telegraph.PhaseElapsed / tuning.Durations.WindupSeconds);
+            var progress = isWindup
+                ? Mathf.Clamp01(telegraph.PhaseElapsed / tuning.Durations.WindupSeconds)
+                : 1f;
             var radius = Mathf.Lerp(tuning.RingMinRadius, tuning.RingMaxRadius, progress);
             windupRing.transform.localScale = new Vector3(radius, 1f, radius);
             windupRing.startColor = CoverageColor();
