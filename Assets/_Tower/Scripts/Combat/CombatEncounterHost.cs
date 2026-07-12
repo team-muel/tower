@@ -109,6 +109,11 @@ namespace Tower.Combat
             Pillbug = pillbugObject.AddComponent<PillbugBrain>();
             Pillbug.Configure(player, Companion.transform, BuildPillbugTuning());
             Companion.Configure(player, new[] { Pillbug.transform }, new CompanionTuning(companionLeashDistance, companionMoveSpeed, companionTurnSpeed, companionTint));
+            var slowMoInput = GetComponent<SlowMoInput>();
+            if (slowMoInput != null)
+            {
+                slowMoInput.SetPillbug(Pillbug);
+            }
         }
 
         private PillbugTuning BuildPillbugTuning()

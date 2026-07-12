@@ -32,6 +32,11 @@ namespace Tower.Combat
         public CounterInstantResult LastInstantResult { get; private set; } = CounterInstantResult.Missed;
         public CounterCoverageResult LastCoverageResult { get; private set; } = CounterCoverageResult.Missed;
 
+        public void SetPillbug(PillbugBrain pillbug)
+        {
+            this.pillbug = pillbug;
+        }
+
         private void Awake()
         {
             if (timeDilation == null)
