@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Tower.Combat
 {
     /// <summary>
-    /// Sole source of Space input and press/hold timestamps for counter
+    /// Sole source of Left Shift (bullet-time) input and press/hold timestamps for counter
     /// measurement. Timestamps deliberately use scaled Time.time.
     /// </summary>
     public sealed class SlowMoInput : MonoBehaviour
@@ -67,7 +67,7 @@ namespace Tower.Combat
 
         private void HandleSpaceInput()
         {
-            if (Input.GetKeyDown(KeyCode.Space))
+            if (Input.GetKeyDown(KeyCode.LeftShift))
             {
                 holdingSpace = true;
                 holdStartedAt = Time.time;
@@ -82,7 +82,7 @@ namespace Tower.Combat
                 }
             }
 
-            if (Input.GetKeyUp(KeyCode.Space))
+            if (Input.GetKeyUp(KeyCode.LeftShift))
             {
                 holdingSpace = false;
                 holdEndedAt = Time.time;
