@@ -8,7 +8,6 @@ using System.Threading;
 using Tower.Core;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using System.Linq;
 
 namespace Tower.Combat
 {
@@ -166,40 +165,8 @@ namespace Tower.Combat
                 return QaProtocol.Error($"Scene '{sceneName}' is not in the build.");
             }
 
-            LoadSceneViaSequence(sceneName);
+            SceneManager.LoadScene(sceneName);
             return QaProtocol.Ok;
-        }
-
-        private static void LoadSceneViaSequence(string sceneName)
-        {
-            var uiAssembly = AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(a => a.GetName().Name == "Tower.UI");
-            
-            if (uiAssembly == null)
-            {
-                SceneManager.LoadScene(sceneName);
-                return;
-            }
-
-            var sequenceManagerType = uiAssembly.GetType("Tower.UI.SceneSequenceManager");
-            if (sequenceManagerType == null)
-            {
-                SceneManager.LoadScene(sceneName);
-                return;
-            }
-
-            var instanceProp = sequenceManagerType.GetProperty("Instance", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-            var instance = instanceProp?.GetValue(null);
-            var loadMethod = sequenceManagerType.GetMethod("LoadSceneWithSequence", new Type[] { typeof(string) });
-            
-            if (instance != null && loadMethod != null)
-            {
-                loadMethod.Invoke(instance, new object[] { sceneName });
-            }
-            else
-            {
-                SceneManager.LoadScene(sceneName);
-            }
         }
 
         private void AcceptLoop()

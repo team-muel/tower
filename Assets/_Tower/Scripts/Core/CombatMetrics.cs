@@ -10,51 +10,38 @@ namespace Tower.Core
 
         public DateTimeOffset? StartedAtUtc { get; private set; }
         public DateTimeOffset? EndedAtUtc { get; private set; }
-        public int RoundCount { get; private set; }
+        public float DurationSeconds { get; private set; }
         public int ActionCount { get; private set; }
         public CombatTeam? WinningTeam { get; private set; }
         public IReadOnlyDictionary<string, UnitCombatMetrics> Units => units;
 
-        public void OnCombatStarted(TurnEngine engine)
+        public void OnCombatStarted(CombatState state)
         {
             StartedAtUtc = DateTimeOffset.UtcNow;
             EndedAtUtc = null;
             WinningTeam = null;
-            RoundCount = engine?.RoundNumber ?? 0;
+            DurationSeconds = state?.ElapsedSeconds ?? 0f;
             ActionCount = 0;
             units.Clear();
-        }
-
-        public void OnRoundStarted(TurnEngine engine, int roundNumber, IReadOnlyList<string> roundOrder)
-        {
-            RoundCount = Math.Max(RoundCount, roundNumber);
-            if (roundOrder == null)
+            if (state == null)
             {
                 return;
             }
 
-            foreach (var unitId in roundOrder)
+            foreach (var unitId in state.LivingUnitIds)
             {
                 EnsureUnit(unitId);
             }
         }
 
-        public void OnCommandCommitted(TurnEngine engine, TurnCommand command)
+        public void OnAbilityResolved(CombatState state, UseAbilityCommand command)
         {
-            if (command == null)
-            {
-                return;
-            }
-
             var unit = EnsureUnit(command.UnitId);
-            if (command is UseAbilityCommand || command is SkipTurnCommand)
-            {
-                ActionCount++;
-                unit.ActionsTaken++;
-            }
+            ActionCount++;
+            unit.ActionsTaken++;
         }
 
-        public void OnDamageApplied(TurnEngine engine, CombatDamageEvent damageEvent)
+        public void OnDamageApplied(CombatState state, CombatDamageEvent damageEvent)
         {
             if (damageEvent.Damage <= 0)
             {
@@ -71,13 +58,13 @@ namespace Tower.Core
             }
         }
 
-        public void OnCombatEnded(TurnEngine engine)
+        public void OnCombatEnded(CombatState state)
         {
             EndedAtUtc = DateTimeOffset.UtcNow;
-            WinningTeam = engine?.WinningTeam;
-            if (engine != null)
+            WinningTeam = state?.WinningTeam;
+            if (state != null)
             {
-                RoundCount = Math.Max(RoundCount, engine.RoundNumber);
+                DurationSeconds = Math.Max(DurationSeconds, state.ElapsedSeconds);
             }
         }
 

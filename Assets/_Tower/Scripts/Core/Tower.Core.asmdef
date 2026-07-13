@@ -1,7 +1,10 @@
 {
   "name": "Tower.Core",
   "rootNamespace": "Tower.Core",
-  "references": [],
+  "references": [
+    "UnityEngine.UI",
+    "Unity.RenderPipelines.Universal.Runtime"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,

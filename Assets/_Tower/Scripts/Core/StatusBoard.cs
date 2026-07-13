@@ -3,9 +3,9 @@ using System.Collections.Generic;
 
 namespace Tower.Core
 {
-    // Per-unit mark and amplify bookkeeping with round-based expiry.
-    // T3 exposes round progression as TurnEngine.RoundNumber (no event), so all
-    // queries take the current round and expire lazily; OnRoundAdvanced prunes.
+    // Per-unit mark and amplify bookkeeping with elapsed-time expiry. Duration
+    // values still come from the existing data fields; the old turn scheduler no
+    // longer owns expiry.
     public sealed class StatusBoard
     {
         // v0: the amplified status lasts one round (the round it was applied in).
@@ -17,7 +17,7 @@ namespace Tower.Core
         private readonly Dictionary<string, AmplifyInstance> amplifyByUnit =
             new Dictionary<string, AmplifyInstance>(StringComparer.Ordinal);
 
-        public Result ApplyMark(string unitId, MarkDef mark, int currentRound)
+        public Result ApplyMark(string unitId, MarkDef mark, float elapsedSeconds)
         {
             if (string.IsNullOrWhiteSpace(unitId))
             {
@@ -48,22 +48,22 @@ namespace Tower.Core
             var stacks = 1;
             if (mark.Stackable
                 && unitMarks.TryGetValue(mark.Id, out var existing)
-                && currentRound < existing.ExpiresAtRound)
+                && elapsedSeconds < existing.ExpiresAtSeconds)
             {
                 stacks = existing.Stacks + 1;
             }
 
             // Re-applying always refreshes the duration; stacking only per MarkDef.
-            unitMarks[mark.Id] = new MarkInstance(mark, stacks, currentRound + mark.DurationTurns);
+            unitMarks[mark.Id] = new MarkInstance(mark, stacks, elapsedSeconds + mark.DurationTurns);
             return Result.Success();
         }
 
-        public bool HasMark(string unitId, string markId, int currentRound)
+        public bool HasMark(string unitId, string markId, float elapsedSeconds)
         {
-            return GetMarkStacks(unitId, markId, currentRound) > 0;
+            return GetMarkStacks(unitId, markId, elapsedSeconds) > 0;
         }
 
-        public int GetMarkStacks(string unitId, string markId, int currentRound)
+        public int GetMarkStacks(string unitId, string markId, float elapsedSeconds)
         {
             if (string.IsNullOrEmpty(unitId) || string.IsNullOrEmpty(markId))
             {
@@ -75,7 +75,7 @@ namespace Tower.Core
                 return 0;
             }
 
-            return currentRound < instance.ExpiresAtRound ? instance.Stacks : 0;
+            return elapsedSeconds < instance.ExpiresAtSeconds ? instance.Stacks : 0;
         }
 
         public bool RemoveMark(string unitId, string markId)
@@ -86,7 +86,7 @@ namespace Tower.Core
                 && unitMarks.Remove(markId);
         }
 
-        public Result ApplyAmplify(string unitId, float multiplier, int currentRound)
+        public Result ApplyAmplify(string unitId, float multiplier, float elapsedSeconds)
         {
             if (string.IsNullOrWhiteSpace(unitId))
             {
@@ -99,23 +99,23 @@ namespace Tower.Core
             }
 
             // v0: re-applying refreshes the status; it never stacks.
-            amplifyByUnit[unitId] = new AmplifyInstance(multiplier, currentRound + AmplifyDurationRounds);
+            amplifyByUnit[unitId] = new AmplifyInstance(multiplier, elapsedSeconds + AmplifyDurationRounds);
             return Result.Success();
         }
 
-        public bool IsAmplified(string unitId, int currentRound)
+        public bool IsAmplified(string unitId, float elapsedSeconds)
         {
             return !string.IsNullOrEmpty(unitId)
                 && amplifyByUnit.TryGetValue(unitId, out var instance)
-                && currentRound < instance.ExpiresAtRound;
+                && elapsedSeconds < instance.ExpiresAtSeconds;
         }
 
-        public float GetAmplifyMultiplier(string unitId, int currentRound)
+        public float GetAmplifyMultiplier(string unitId, float elapsedSeconds)
         {
-            return IsAmplified(unitId, currentRound) ? amplifyByUnit[unitId].Multiplier : 1f;
+            return IsAmplified(unitId, elapsedSeconds) ? amplifyByUnit[unitId].Multiplier : 1f;
         }
 
-        public bool TryConsumeAmplify(string unitId, int currentRound, out float multiplier)
+        public bool TryConsumeAmplify(string unitId, float elapsedSeconds, out float multiplier)
         {
             multiplier = 1f;
             if (string.IsNullOrEmpty(unitId) || !amplifyByUnit.TryGetValue(unitId, out var instance))
@@ -124,7 +124,7 @@ namespace Tower.Core
             }
 
             amplifyByUnit.Remove(unitId);
-            if (currentRound >= instance.ExpiresAtRound)
+            if (elapsedSeconds >= instance.ExpiresAtSeconds)
             {
                 return false;
             }
@@ -134,7 +134,7 @@ namespace Tower.Core
         }
 
         // QA harness support: active (non-expired) mark ids, sorted for determinism.
-        public IReadOnlyList<string> GetActiveMarkIds(string unitId, int currentRound)
+        public IReadOnlyList<string> GetActiveMarkIds(string unitId, float elapsedSeconds)
         {
             if (string.IsNullOrEmpty(unitId) || !marksByUnit.TryGetValue(unitId, out var unitMarks))
             {
@@ -144,7 +144,7 @@ namespace Tower.Core
             var ids = new List<string>();
             foreach (var pair in unitMarks)
             {
-                if (currentRound < pair.Value.ExpiresAtRound)
+                if (elapsedSeconds < pair.Value.ExpiresAtSeconds)
                 {
                     ids.Add(pair.Key);
                 }
@@ -165,15 +165,14 @@ namespace Tower.Core
             amplifyByUnit.Remove(unitId);
         }
 
-        // Round-progression hook: call with TurnEngine.RoundNumber to prune expired statuses.
-        public void OnRoundAdvanced(int currentRound)
+        public void PruneExpired(float elapsedSeconds)
         {
             foreach (var unitId in new List<string>(marksByUnit.Keys))
             {
                 var unitMarks = marksByUnit[unitId];
                 foreach (var markId in new List<string>(unitMarks.Keys))
                 {
-                    if (currentRound >= unitMarks[markId].ExpiresAtRound)
+                    if (elapsedSeconds >= unitMarks[markId].ExpiresAtSeconds)
                     {
                         unitMarks.Remove(markId);
                     }
@@ -187,37 +186,42 @@ namespace Tower.Core
 
             foreach (var unitId in new List<string>(amplifyByUnit.Keys))
             {
-                if (currentRound >= amplifyByUnit[unitId].ExpiresAtRound)
+                if (elapsedSeconds >= amplifyByUnit[unitId].ExpiresAtSeconds)
                 {
                     amplifyByUnit.Remove(unitId);
                 }
             }
         }
 
+        public void OnRoundAdvanced(int currentRound)
+        {
+            PruneExpired(currentRound);
+        }
+
         private readonly struct MarkInstance
         {
-            public MarkInstance(MarkDef definition, int stacks, int expiresAtRound)
+            public MarkInstance(MarkDef definition, int stacks, float expiresAtSeconds)
             {
                 Definition = definition;
                 Stacks = stacks;
-                ExpiresAtRound = expiresAtRound;
+                ExpiresAtSeconds = expiresAtSeconds;
             }
 
             public MarkDef Definition { get; }
             public int Stacks { get; }
-            public int ExpiresAtRound { get; }
+            public float ExpiresAtSeconds { get; }
         }
 
         private readonly struct AmplifyInstance
         {
-            public AmplifyInstance(float multiplier, int expiresAtRound)
+            public AmplifyInstance(float multiplier, float expiresAtSeconds)
             {
                 Multiplier = multiplier;
-                ExpiresAtRound = expiresAtRound;
+                ExpiresAtSeconds = expiresAtSeconds;
             }
 
             public float Multiplier { get; }
-            public int ExpiresAtRound { get; }
+            public float ExpiresAtSeconds { get; }
         }
     }
 }

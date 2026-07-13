@@ -14,5 +14,21 @@ namespace Tower.Core
         public string DisplayName => displayName;
         public int DurationTurns => durationTurns;
         public bool Stackable => stackable;
+
+        // Runtime factory mirroring AbilityDef/CharacterDef.CreateRuntime — lets
+        // tests and procedural code mint marks without asset files (T49).
+        public static MarkDef CreateRuntime(
+            string id,
+            string displayName = null,
+            int durationTurns = 1,
+            bool stackable = false)
+        {
+            var mark = CreateInstance<MarkDef>();
+            mark.id = id;
+            mark.displayName = displayName ?? id;
+            mark.durationTurns = durationTurns;
+            mark.stackable = stackable;
+            return mark;
+        }
     }
 }

@@ -105,16 +105,6 @@ namespace Tower.Combat
             ApplyTransform();
         }
 
-        public void Focus(GridView gridView, GridPos pos)
-        {
-            if (gridView == null)
-            {
-                return;
-            }
-
-            FocusWorld(gridView.CellToWorld(pos));
-        }
-
         public void FocusWorld(Vector3 worldPosition)
         {
             _pivotTarget = worldPosition;

@@ -61,15 +61,15 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
-        public void ResolveTurnFeel_RangedAbility_UsesProjectileTween()
+        public void ResolveCommandFeel_RangedAbility_UsesProjectileTween()
         {
             var bolt = AbilityDef.CreateRuntime("bolt", AbilityTag.Apply, 2, 4, AbilityTargetType.Enemy);
             var catalog = new AbilityFeelCatalog();
             catalog.RegisterAbility(bolt);
             var resolver = new AbilityFeelResolver();
 
-            var feel = resolver.ResolveTurnFeel(
-                new TurnPresentationEvent(TurnPresentationEventType.Ability, "a", abilityId: "bolt", targetUnitId: "b"),
+            var feel = resolver.ResolveCommandFeel(
+                new UseAbilityCommand("a", "bolt", "b"),
                 catalog);
 
             Assert.That(feel.PopupStyle, Is.EqualTo(DamagePopupStyle.Normal));

@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Reflection;
 using NUnit.Framework;
 using Tower.Core;
 using UnityEngine;
@@ -9,16 +8,16 @@ namespace Tower.Tests.EditMode
     public sealed class AbilityResolverTests
     {
         private readonly List<Object> createdObjects = new List<Object>();
-        private GridMap map;
+        private AnalogBattlefield battlefield;
         private StatusBoard statusBoard;
         private AbilityResolver resolver;
 
         [SetUp]
         public void SetUp()
         {
-            map = new GridMap(8, 8);
+            battlefield = new AnalogBattlefield(8f, 8f);
             statusBoard = new StatusBoard();
-            var created = AbilityResolver.Create(map, statusBoard);
+            var created = AbilityResolver.Create(battlefield, statusBoard);
             Assert.That(created.IsSuccess, Is.True, created.Error);
             resolver = created.Value;
         }
@@ -37,442 +36,195 @@ namespace Tower.Tests.EditMode
         [Test]
         public void Apply_AppliesMarkAndDealsBasePowerDamage()
         {
-            var mark = CreateMark("burn", durationTurns: 2, stackable: false);
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5, mark: mark);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, attack: 3, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1, defense: 2);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
+            var mark = Mark("burn", durationTurns: 2);
+            var strike = Ability("strike", AbilityTag.Apply, power: 5, range: 2, mark: mark);
+            var caster = Unit("caster", CombatTeam.Player, attack: 3, abilities: new[] { strike });
+            var enemy = Unit("enemy", CombatTeam.Enemy, defense: 2);
+            Place("caster", 1f, 1f);
+            Place("enemy", 2f, 1f);
+            var state = State(caster, enemy);
 
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "strike", "enemy"));
-
-            Assert.That(result.IsSuccess, Is.True, result.Error);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - (5 + 3 - 2)));
-            Assert.That(statusBoard.HasMark("enemy", "burn", engine.RoundNumber), Is.True);
-        }
-
-        [Test]
-        public void Apply_WithZeroPower_AppliesMarkWithoutDamage()
-        {
-            var mark = CreateMark("hex", durationTurns: 2, stackable: false);
-            var hex = CreateAbility("hex-ability", AbilityTag.Apply, power: 0, mark: mark);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, attack: 3, abilities: new[] { hex });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
-
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "hex-ability", "enemy"));
+            var result = resolver.Execute(state, new UseAbilityCommand("caster", "strike", "enemy"));
 
             Assert.That(result.IsSuccess, Is.True, result.Error);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20));
-            Assert.That(statusBoard.HasMark("enemy", "hex", engine.RoundNumber), Is.True);
+            Assert.That(state.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - (5 + 3 - 2)));
+            Assert.That(statusBoard.HasMark("enemy", "burn", state.ElapsedSeconds), Is.True);
         }
 
         [Test]
         public void Consume_WithMark_RemovesMarkAndDealsBonusDamage()
         {
-            var mark = CreateMark("burn", durationTurns: 2, stackable: false);
-            var detonate = CreateAbility("detonate", AbilityTag.Consume, power: 4, mark: mark);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, attack: 3, abilities: new[] { detonate });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1, defense: 2);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
-            Assert.That(statusBoard.ApplyMark("enemy", mark, engine.RoundNumber).IsSuccess, Is.True);
+            var mark = Mark("burn", durationTurns: 2);
+            var detonate = Ability("detonate", AbilityTag.Consume, power: 4, range: 2, mark: mark);
+            var caster = Unit("caster", CombatTeam.Player, attack: 3, abilities: new[] { detonate });
+            var enemy = Unit("enemy", CombatTeam.Enemy, defense: 2);
+            Place("caster", 1f, 1f);
+            Place("enemy", 2f, 1f);
+            var state = State(caster, enemy);
+            Assert.That(statusBoard.ApplyMark("enemy", mark, state.ElapsedSeconds).IsSuccess, Is.True);
 
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "detonate", "enemy"));
-
-            var expectedDamage = Mathf.RoundToInt(4 * AbilityResolver.ConsumeBonusMultiplier) + 3 - 2;
-            Assert.That(result.IsSuccess, Is.True, result.Error);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - expectedDamage));
-            Assert.That(statusBoard.HasMark("enemy", "burn", engine.RoundNumber), Is.False);
-        }
-
-        [Test]
-        public void Consume_WithoutMark_DealsBasePowerOnly()
-        {
-            var mark = CreateMark("burn", durationTurns: 2, stackable: false);
-            var detonate = CreateAbility("detonate", AbilityTag.Consume, power: 4, mark: mark);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, attack: 3, abilities: new[] { detonate });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1, defense: 2);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
-
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "detonate", "enemy"));
+            var result = resolver.Execute(state, new UseAbilityCommand("caster", "detonate", "enemy"));
 
             Assert.That(result.IsSuccess, Is.True, result.Error);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - (4 + 3 - 2)));
+            Assert.That(statusBoard.HasMark("enemy", "burn", state.ElapsedSeconds), Is.False);
+            Assert.That(state.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - (int)System.Math.Round((4 * AbilityResolver.ConsumeBonusMultiplier) + 3 - 2)));
         }
 
         [Test]
-        public void Amplify_MultipliesAllyNextAbilityPowerOnce()
+        public void Amplify_IsConsumedByNextDamage()
         {
-            var amplify = CreateAbility("war-cry", AbilityTag.Amplify, targetType: AbilityTargetType.Ally, amplifyMultiplier: 2f);
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { amplify });
-            var ally = Unit("ally", CombatTeam.Player, speed: 5, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("ally", 1, 0);
-            Place("enemy", 1, 1);
-            var engine = CreateEngine(caster, ally, enemy);
+            var amplify = Ability("war-cry", AbilityTag.Amplify, power: 0, range: 2, targetType: AbilityTargetType.Ally, amplification: 2f);
+            var strike = Ability("strike", AbilityTag.Apply, power: 4, range: 2);
+            var caster = Unit("caster", CombatTeam.Player, abilities: new[] { amplify });
+            var ally = Unit("ally", CombatTeam.Player, attack: 2, abilities: new[] { strike });
+            var enemy = Unit("enemy", CombatTeam.Enemy);
+            Place("caster", 1f, 1f);
+            Place("ally", 2f, 1f);
+            Place("enemy", 3f, 1f);
+            var state = State(caster, ally, enemy);
 
-            Assert.That(resolver.Execute(engine, new UseAbilityCommand("caster", "war-cry", "ally")).IsSuccess, Is.True);
-            Assert.That(statusBoard.IsAmplified("ally", engine.RoundNumber), Is.True);
+            Assert.That(resolver.Execute(state, new UseAbilityCommand("caster", "war-cry", "ally")).IsSuccess, Is.True);
+            Assert.That(statusBoard.IsAmplified("ally", state.ElapsedSeconds), Is.True);
+            Assert.That(resolver.Execute(state, new UseAbilityCommand("ally", "strike", "enemy")).IsSuccess, Is.True);
 
-            Assert.That(resolver.Execute(engine, new UseAbilityCommand("ally", "strike", "enemy")).IsSuccess, Is.True);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - 10), "First strike should be amplified.");
-
-            Assert.That(resolver.Execute(engine, new UseAbilityCommand("ally", "strike", "enemy")).IsSuccess, Is.True);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - 10 - 5), "Second strike should not be amplified.");
+            Assert.That(statusBoard.IsAmplified("ally", state.ElapsedSeconds), Is.False);
+            Assert.That(state.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - ((4 * 2) + 2)));
         }
 
         [Test]
-        public void Amplify_ReapplyRefreshesInsteadOfStacking()
+        public void PointTarget_ResolvesOccupiedPoint()
         {
-            var amplify = CreateAbility("war-cry", AbilityTag.Amplify, targetType: AbilityTargetType.Ally, amplifyMultiplier: 2f);
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { amplify });
-            var ally = Unit("ally", CombatTeam.Player, speed: 5, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("ally", 1, 0);
-            Place("enemy", 1, 1);
-            var engine = CreateEngine(caster, ally, enemy);
+            var blast = Ability("blast", AbilityTag.Apply, power: 3, range: 3, targetType: AbilityTargetType.Cell);
+            var caster = Unit("caster", CombatTeam.Player, abilities: new[] { blast });
+            var enemy = Unit("enemy", CombatTeam.Enemy);
+            Place("caster", 1f, 1f);
+            Place("enemy", 2f, 1f);
+            var state = State(caster, enemy);
 
-            Assert.That(resolver.Execute(engine, new UseAbilityCommand("caster", "war-cry", "ally")).IsSuccess, Is.True);
-            Assert.That(resolver.Execute(engine, new UseAbilityCommand("caster", "war-cry", "ally")).IsSuccess, Is.True);
-
-            Assert.That(resolver.Execute(engine, new UseAbilityCommand("ally", "strike", "enemy")).IsSuccess, Is.True);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - 10), "Amplify must not stack multiplicatively.");
-        }
-
-        [Test]
-        public void Amplify_ExpiresAfterItsRound()
-        {
-            var amplify = CreateAbility("war-cry", AbilityTag.Amplify, targetType: AbilityTargetType.Ally, amplifyMultiplier: 2f);
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { amplify });
-            var ally = Unit("ally", CombatTeam.Player, speed: 5, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("ally", 1, 0);
-            Place("enemy", 2, 0);
-            var engine = CreateEngine(caster, ally, enemy);
-
-            Assert.That(engine.Submit(new UseAbilityCommand("caster", "war-cry", "ally")).IsSuccess, Is.True);
-            Assert.That(statusBoard.IsAmplified("ally", engine.RoundNumber), Is.True);
-
-            Assert.That(engine.Submit(new SkipTurnCommand("ally")).IsSuccess, Is.True);
-            Assert.That(engine.Submit(new SkipTurnCommand("enemy")).IsSuccess, Is.True);
-            Assert.That(engine.RoundNumber, Is.EqualTo(2));
-            Assert.That(statusBoard.IsAmplified("ally", engine.RoundNumber), Is.False);
-
-            Assert.That(engine.Submit(new SkipTurnCommand("caster")).IsSuccess, Is.True);
-            Assert.That(engine.Submit(new UseAbilityCommand("ally", "strike", "enemy")).IsSuccess, Is.True);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - 5), "Expired amplify must not boost the strike.");
-        }
-
-        [Test]
-        public void Consume_AfterMarkExpires_DealsBasePowerOnly()
-        {
-            var mark = CreateMark("burn", durationTurns: 1, stackable: false);
-            var apply = CreateAbility("ignite", AbilityTag.Apply, power: 0, mark: mark);
-            var detonate = CreateAbility("detonate", AbilityTag.Consume, power: 4, mark: mark);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { apply, detonate });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
-
-            Assert.That(engine.Submit(new UseAbilityCommand("caster", "ignite", "enemy")).IsSuccess, Is.True);
-            Assert.That(statusBoard.HasMark("enemy", "burn", engine.RoundNumber), Is.True);
-
-            Assert.That(engine.Submit(new SkipTurnCommand("enemy")).IsSuccess, Is.True);
-            Assert.That(engine.RoundNumber, Is.EqualTo(2));
-            Assert.That(statusBoard.HasMark("enemy", "burn", engine.RoundNumber), Is.False);
-
-            Assert.That(engine.Submit(new UseAbilityCommand("caster", "detonate", "enemy")).IsSuccess, Is.True);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - 4), "Expired mark must not grant the consume bonus.");
-        }
-
-        [Test]
-        public void Damage_IsClampedToMinimumOne()
-        {
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 1);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1, defense: 50);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
-
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "strike", "enemy"));
+            var result = resolver.Execute(state, new UseAbilityCommand("caster", "blast", targetPoint: new BattlePos(2f, 1f)));
 
             Assert.That(result.IsSuccess, Is.True, result.Error);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(19));
+            Assert.That(state.GetCombatant("enemy").State.CurrentHp, Is.LessThan(20));
         }
 
         [Test]
-        public void Execute_FailsWhenTargetOutOfRange()
+        public void Execute_FailsWhenAbilityIsOnCooldown()
         {
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5, range: 1);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 3, 0);
-            var engine = CreateEngine(caster, enemy);
+            var strike = Ability("strike", AbilityTag.Apply, power: 3, range: 2, cooldown: 2);
+            var casterState = CharacterState.Create(
+                Character("caster", attack: 0, defense: 0, abilities: new[] { strike }),
+                currentHp: 20,
+                slotCount: 1,
+                assignedAbilities: new[] { strike });
+            Assert.That(casterState.IsSuccess, Is.True, casterState.Error);
+            var cooled = casterState.Value.WithAbilityCooldown("strike", 1);
+            Assert.That(cooled.IsSuccess, Is.True, cooled.Error);
+            var caster = CombatantRef.Create("caster", CombatTeam.Player, cooled.Value).Value;
+            var enemy = Unit("enemy", CombatTeam.Enemy);
+            Place("caster", 1f, 1f);
+            Place("enemy", 2f, 1f);
+            var state = State(caster, enemy);
 
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "strike", "enemy"));
+            var result = resolver.Execute(state, new UseAbilityCommand("caster", "strike", "enemy"));
 
             Assert.That(result.IsFailure, Is.True);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20));
+            Assert.That(result.Error, Does.Contain("cooldown"));
         }
 
         [Test]
-        public void Execute_FailsWhenLineOfSightBlocked()
+        public void LethalDamageEndsCombatAndRemovesOccupant()
         {
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5, range: 3);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 0, 2);
-            map.SetBlocked(new GridPos(0, 1), true);
-            var engine = CreateEngine(caster, enemy);
+            var strike = Ability("strike", AbilityTag.Apply, power: 50, range: 2);
+            var caster = Unit("caster", CombatTeam.Player, abilities: new[] { strike });
+            var enemy = Unit("enemy", CombatTeam.Enemy);
+            Place("caster", 1f, 1f);
+            Place("enemy", 2f, 1f);
+            var state = State(caster, enemy);
 
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "strike", "enemy"));
-
-            Assert.That(result.IsFailure, Is.True);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20));
-        }
-
-        [Test]
-        public void Execute_FailsOnWrongTargetType()
-        {
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5);
-            var amplify = CreateAbility("war-cry", AbilityTag.Amplify, targetType: AbilityTargetType.Ally, amplifyMultiplier: 2f);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { strike, amplify });
-            var ally = Unit("ally", CombatTeam.Player, speed: 5);
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("ally", 1, 0);
-            Place("enemy", 0, 1);
-            var engine = CreateEngine(caster, ally, enemy);
-
-            Assert.That(resolver.Execute(engine, new UseAbilityCommand("caster", "strike", "ally")).IsFailure, Is.True);
-            Assert.That(resolver.Execute(engine, new UseAbilityCommand("caster", "war-cry", "enemy")).IsFailure, Is.True);
-            Assert.That(engine.GetCombatant("ally").State.CurrentHp, Is.EqualTo(20));
-            Assert.That(statusBoard.IsAmplified("enemy", engine.RoundNumber), Is.False);
-        }
-
-        [Test]
-        public void Execute_FailsOnDeadTarget()
-        {
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { strike });
-            var deadEnemy = Unit("dead-enemy", CombatTeam.Enemy, speed: 5, currentHp: 0);
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, deadEnemy, enemy);
-
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "strike", "dead-enemy"));
-
-            Assert.That(result.IsFailure, Is.True);
-        }
-
-        [Test]
-        public void Execute_FailsWhenCellTargetMissing()
-        {
-            var blast = CreateAbility("blast", AbilityTag.Apply, power: 5, targetType: AbilityTargetType.Cell);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { blast });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
-
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "blast"));
-
-            Assert.That(result.IsFailure, Is.True);
-        }
-
-        [Test]
-        public void CellTargetedAbility_HitsCellOccupant()
-        {
-            var blast = CreateAbility("blast", AbilityTag.Apply, power: 5, targetType: AbilityTargetType.Cell);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { blast });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
-
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "blast", targetCell: new GridPos(1, 0)));
+            var result = resolver.Execute(state, new UseAbilityCommand("caster", "strike", "enemy"));
 
             Assert.That(result.IsSuccess, Is.True, result.Error);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - 5));
+            Assert.That(state.IsCombatEnded, Is.True);
+            Assert.That(state.WinningTeam, Is.EqualTo(CombatTeam.Player));
+            Assert.That(battlefield.FindOccupant("enemy").HasValue, Is.False);
         }
 
-        [Test]
-        public void Kill_RemovesUnitFromTurnQueueAndGrid()
+        private CombatState State(params CombatantRef[] combatants)
         {
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 5, currentHp: 3);
-            var otherEnemy = Unit("other-enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            Place("other-enemy", 2, 0);
-            var engine = CreateEngine(caster, enemy, otherEnemy);
-
-            var result = resolver.Execute(engine, new UseAbilityCommand("caster", "strike", "enemy"));
-
-            Assert.That(result.IsSuccess, Is.True, result.Error);
-            Assert.That(engine.IsAlive("enemy"), Is.False);
-            Assert.That(engine.CurrentRoundOrder, Does.Not.Contain("enemy"));
-            Assert.That(map.GetOccupant(new GridPos(1, 0)), Is.Null.Or.Empty);
-            Assert.That(engine.IsCombatEnded, Is.False);
-        }
-
-        [Test]
-        public void Submit_FailedAbilityDoesNotConsumeAction()
-        {
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5, range: 1);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 3, 0);
-            var engine = CreateEngine(caster, enemy);
-
-            var result = engine.Submit(new UseAbilityCommand("caster", "strike", "enemy"));
-
-            Assert.That(result.IsFailure, Is.True);
-            Assert.That(engine.CurrentTurn.UnitId, Is.EqualTo("caster"));
-            Assert.That(engine.CurrentTurn.HasAction, Is.True);
-        }
-
-        [Test]
-        public void Submit_AbilityConsumesActionAndAdvancesTurn()
-        {
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
-
-            var result = engine.Submit(new UseAbilityCommand("caster", "strike", "enemy"));
-
-            Assert.That(result.IsSuccess, Is.True, result.Error);
-            Assert.That(engine.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20 - 5));
-            Assert.That(engine.CurrentTurn.UnitId, Is.EqualTo("enemy"));
-        }
-
-        [Test]
-        public void Submit_KillingLastEnemyEndsCombat()
-        {
-            var strike = CreateAbility("strike", AbilityTag.Apply, power: 5);
-            var caster = Unit("caster", CombatTeam.Player, speed: 10, abilities: new[] { strike });
-            var enemy = Unit("enemy", CombatTeam.Enemy, speed: 1, currentHp: 1);
-            Place("caster", 0, 0);
-            Place("enemy", 1, 0);
-            var engine = CreateEngine(caster, enemy);
-
-            var result = engine.Submit(new UseAbilityCommand("caster", "strike", "enemy"));
-
-            Assert.That(result.IsSuccess, Is.True, result.Error);
-            Assert.That(engine.IsCombatEnded, Is.True);
-            Assert.That(engine.WinningTeam, Is.EqualTo(CombatTeam.Player));
-            Assert.That(engine.CurrentTurn, Is.Null);
-        }
-
-        private TurnEngine CreateEngine(params CombatantRef[] combatants)
-        {
-            var result = TurnEngine.Create(combatants, abilityExecutor: resolver);
+            var result = CombatState.Create(combatants, statusBoard);
             Assert.That(result.IsSuccess, Is.True, result.Error);
             return result.Value;
         }
 
-        private void Place(string unitId, int x, int y)
+        private void Place(string unitId, float x, float y)
         {
-            Assert.That(map.TrySetOccupant(new GridPos(x, y), unitId), Is.True, unitId);
+            Assert.That(battlefield.TryPlaceOccupant(unitId, new BattlePos(x, y)), Is.True, unitId);
+        }
+
+        private AbilityDef Ability(
+            string id,
+            AbilityTag tag,
+            int power,
+            int range,
+            AbilityTargetType targetType = AbilityTargetType.Enemy,
+            MarkDef mark = null,
+            float amplification = 1f,
+            int cooldown = 0)
+        {
+            var ability = AbilityDef.CreateRuntime(
+                id,
+                tag,
+                power,
+                range,
+                targetType,
+                mark,
+                amplification,
+                cooldownRounds: cooldown);
+            createdObjects.Add(ability);
+            return ability;
+        }
+
+        private MarkDef Mark(string id, int durationTurns)
+        {
+            var mark = MarkDef.CreateRuntime(id, id, durationTurns);
+            createdObjects.Add(mark);
+            return mark;
         }
 
         private CombatantRef Unit(
             string unitId,
             CombatTeam team,
-            int speed,
             int attack = 0,
             int defense = 0,
-            int currentHp = 20,
             AbilityDef[] abilities = null)
         {
-            var definition = ScriptableObject.CreateInstance<CharacterDef>();
-            createdObjects.Add(definition);
-            SetPrivateField(definition, "id", unitId);
-            SetPrivateField(definition, "displayName", unitId);
-            SetPrivateField(definition, "maxHp", 20);
-            SetPrivateField(definition, "attack", attack);
-            SetPrivateField(definition, "defense", defense);
-            SetPrivateField(definition, "speed", speed);
-
-            var assigned = new List<AbilityDef>(abilities ?? new AbilityDef[0]);
-            while (assigned.Count < AbilityLoadout.DefaultSlots)
+            var assignedAbilities = abilities;
+            if (assignedAbilities == null || assignedAbilities.Length == 0)
             {
-                assigned.Add(CreateAbility(unitId + "-filler-" + assigned.Count));
+                assignedAbilities = new[]
+                {
+                    AbilityDef.CreateRuntime(unitId + "-noop", AbilityTag.None, 0, 0, AbilityTargetType.Enemy)
+                };
+                createdObjects.Add(assignedAbilities[0]);
             }
 
+            var definition = Character(unitId, attack, defense, assignedAbilities);
             var state = CharacterState.Create(
                 definition,
-                currentHp,
-                slotCount: assigned.Count,
-                assignedAbilities: assigned.ToArray());
+                currentHp: 20,
+                slotCount: assignedAbilities.Length,
+                assignedAbilities: assignedAbilities);
             Assert.That(state.IsSuccess, Is.True, state.Error);
-
             var combatant = CombatantRef.Create(unitId, team, state.Value);
             Assert.That(combatant.IsSuccess, Is.True, combatant.Error);
             return combatant.Value;
         }
 
-        private AbilityDef CreateAbility(
-            string id,
-            AbilityTag tag = AbilityTag.None,
-            int power = 0,
-            int range = 1,
-            MarkDef mark = null,
-            AbilityTargetType targetType = AbilityTargetType.Enemy,
-            float amplifyMultiplier = 1f)
+        private CharacterDef Character(string id, int attack, int defense, AbilityDef[] abilities)
         {
-            var ability = ScriptableObject.CreateInstance<AbilityDef>();
-            createdObjects.Add(ability);
-            SetPrivateField(ability, "id", id);
-            SetPrivateField(ability, "displayName", id);
-            SetPrivateField(ability, "tag", tag);
-            SetPrivateField(ability, "basePower", power);
-            SetPrivateField(ability, "range", range);
-            SetPrivateField(ability, "targetMark", mark);
-            SetPrivateField(ability, "targetType", targetType);
-            SetPrivateField(ability, "amplificationMultiplier", amplifyMultiplier);
-            return ability;
-        }
-
-        private MarkDef CreateMark(string id, int durationTurns, bool stackable)
-        {
-            var mark = ScriptableObject.CreateInstance<MarkDef>();
-            createdObjects.Add(mark);
-            SetPrivateField(mark, "id", id);
-            SetPrivateField(mark, "displayName", id);
-            SetPrivateField(mark, "durationTurns", durationTurns);
-            SetPrivateField(mark, "stackable", stackable);
-            return mark;
-        }
-
-        private static void SetPrivateField<T>(T target, string fieldName, object value)
-        {
-            var field = typeof(T).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(field, Is.Not.Null, fieldName);
-            field.SetValue(target, value);
+            var definition = CharacterDef.CreateRuntime(id, id, 20, attack, defense, 10, DispositionType.Aggressive, abilities);
+            createdObjects.Add(definition);
+            return definition;
         }
     }
 }

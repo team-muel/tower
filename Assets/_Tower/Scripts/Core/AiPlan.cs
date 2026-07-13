@@ -10,8 +10,7 @@ namespace Tower.Core
 
     // The scorer's chosen turn: an optional reposition followed by an ability
     // use (Kind == Ability), a pure reposition (Move), or a stay-put (Skip).
-    // T20: positions are continuous BattlePos values; the legacy GridPos
-    // views (MoveDestination/TargetCell) are derived for grid-mode callers.
+    // The scorer's chosen action in continuous battlefield coordinates.
     public sealed class AiPlan
     {
         public AiPlan(
@@ -38,23 +37,12 @@ namespace Tower.Core
         public BattlePos MovePosition { get; }
         public float MoveDistance { get; }
 
-        // Legacy grid view: the cell containing MovePosition.
-        public GridPos MoveDestination
-        {
-            get { return BattleScale.ToGridPos(MovePosition); }
-        }
-
         // Set when Kind == Ability.
         public string AbilityId { get; }
         public string TargetUnitId { get; }
 
         // Set for cell-targeted abilities only.
         public BattlePos? TargetPoint { get; }
-
-        public GridPos? TargetCell
-        {
-            get { return TargetPoint.HasValue ? BattleScale.ToGridPos(TargetPoint.Value) : (GridPos?)null; }
-        }
 
         public float Score { get; }
     }

@@ -10,10 +10,8 @@ namespace Tower.Core
     // Skip), then ability id, then target id, then destination (Y, then X).
     // Pure C#. Dispositions live in DispositionWeights data — the scorer has
     // no per-disposition branches.
-    // T20: all spatial queries (reachability, distance, adjacency, line of
-    // sight) go through IBattlefield; grid behaviour is preserved bit-exactly
-    // by GridBattlefieldAdapter, analog mode samples a fixed deterministic
-    // candidate set (see AnalogBattlefield.GetMoveCandidates).
+    // Spatial queries go through IBattlefield. Analog mode samples a fixed
+    // deterministic candidate set (see AnalogBattlefield.GetMoveCandidates).
     public sealed class ActionScorer
     {
         private readonly IBattlefield battlefield;
@@ -28,19 +26,6 @@ namespace Tower.Core
             this.battlefield = battlefield;
             this.statusBoard = statusBoard;
             this.weightTable = weightTable;
-        }
-
-        public static Result<ActionScorer> Create(
-            GridMap map,
-            StatusBoard statusBoard,
-            IReadOnlyDictionary<DispositionType, DispositionWeights> weightTable = null)
-        {
-            if (map == null)
-            {
-                return Result<ActionScorer>.Failure("Grid map is required.");
-            }
-
-            return Create(new GridBattlefieldAdapter(map), statusBoard, weightTable);
         }
 
         public static Result<ActionScorer> Create(
@@ -62,33 +47,30 @@ namespace Tower.Core
                 new ActionScorer(battlefield, statusBoard, weightTable ?? DispositionWeights.CreateDefaultTable()));
         }
 
-        public Result<AiPlan> ChooseAction(TurnEngine engine, string unitId)
+        public Result<AiPlan> ChooseAction(CombatState state, string unitId)
         {
-            return ChooseAction(engine, unitId, false, null);
+            return ChooseAction(state, unitId, false, null);
         }
 
-        // T18: same disposition scoring for movement and targeting, but the
-        // only ability candidate is the engine's pending ability for this
-        // unit. A null pending id means the unit may only move or skip.
-        public Result<AiPlan> ChoosePendingAction(TurnEngine engine, string unitId, string pendingAbilityId)
+        public Result<AiPlan> ChoosePendingAction(CombatState state, string unitId, string pendingAbilityId)
         {
-            return ChooseAction(engine, unitId, true, pendingAbilityId);
+            return ChooseAction(state, unitId, true, pendingAbilityId);
         }
 
-        private Result<AiPlan> ChooseAction(TurnEngine engine, string unitId, bool restrictToPending, string pendingAbilityId)
+        private Result<AiPlan> ChooseAction(CombatState state, string unitId, bool restrictToPending, string pendingAbilityId)
         {
-            if (engine == null)
+            if (state == null)
             {
-                return Result<AiPlan>.Failure("Turn engine is required.");
+                return Result<AiPlan>.Failure("Combat state is required.");
             }
 
-            var actor = engine.GetCombatant(unitId);
+            var actor = state.GetCombatant(unitId);
             if (actor == null)
             {
                 return Result<AiPlan>.Failure("Unknown unit.");
             }
 
-            if (!engine.IsAlive(unitId))
+            if (!state.IsAlive(unitId))
             {
                 return Result<AiPlan>.Failure("Unit is defeated.");
             }
@@ -96,7 +78,7 @@ namespace Tower.Core
             var actorPosition = battlefield.FindOccupant(unitId);
             if (!actorPosition.HasValue)
             {
-                return Result<AiPlan>.Failure("Unit is not on the grid.");
+                return Result<AiPlan>.Failure("Unit is not on the battlefield.");
             }
 
             var disposition = actor.State.Definition.Disposition;
@@ -105,15 +87,11 @@ namespace Tower.Core
                 return Result<AiPlan>.Failure($"No weights configured for disposition '{disposition}'.");
             }
 
-            var isActiveUnit = engine.CurrentTurn != null
-                && StringComparer.Ordinal.Equals(engine.CurrentTurn.UnitId, unitId);
-            var movementBudget = isActiveUnit
-                ? engine.CurrentTurn.RemainingMovement
-                : TurnEngine.DefaultMovementPerTurn;
-            var hasAction = !isActiveUnit || engine.CurrentTurn.HasAction;
-            var currentRound = engine.RoundNumber;
+            var movementBudget = CombatState.DefaultMovementBudget;
+            var hasAction = true;
+            var elapsedSeconds = state.ElapsedSeconds;
 
-            var context = BuildContext(engine, actor);
+            var context = BuildContext(state, actor);
             var candidates = battlefield.GetMoveCandidates(unitId, actorPosition.Value, movementBudget);
             var preferredRange = ComputePreferredRange(actor);
 
@@ -162,7 +140,7 @@ namespace Tower.Core
                             continue;
                         }
 
-                        var actionScore = ScoreAbilityUse(actor, ability, target.Unit, weights, currentRound, context);
+                        var actionScore = ScoreAbilityUse(actor, ability, target.Unit, weights, elapsedSeconds, context);
                         Consider(ref best, new AiPlan(
                             AiPlanKind.Ability,
                             position,
@@ -180,21 +158,19 @@ namespace Tower.Core
                 : Result<AiPlan>.Failure("No candidate actions available.");
         }
 
-        private TurnContext BuildContext(TurnEngine engine, CombatantRef actor)
+        private TurnContext BuildContext(CombatState state, CombatantRef actor)
         {
             var enemies = new List<UnitInfo>();
             var teammates = new List<UnitInfo>();
 
-            // CurrentRoundOrder covers every living combatant in a stable,
-            // deterministic order (speed desc, then unit id).
-            foreach (var id in engine.CurrentRoundOrder)
+            foreach (var id in state.LivingUnitIds)
             {
-                if (!engine.IsAlive(id))
+                if (!state.IsAlive(id))
                 {
                     continue;
                 }
 
-                var unit = engine.GetCombatant(id);
+                var unit = state.GetCombatant(id);
                 var position = battlefield.FindOccupant(id);
                 if (unit == null || !position.HasValue)
                 {
@@ -216,7 +192,7 @@ namespace Tower.Core
                 enemies,
                 teammates,
                 FindProtectTargetPosition(teammates, actor.UnitId),
-                FindNextActingAlly(engine, actor));
+                FindNextActingAlly(state, actor));
         }
 
         // Protect target: the living teammate (excluding the actor) with the
@@ -243,11 +219,10 @@ namespace Tower.Core
             return best?.Position;
         }
 
-        // The next living teammate after the actor in the round order,
-        // wrapping around into the next round.
-        private static string FindNextActingAlly(TurnEngine engine, CombatantRef actor)
+        // The next living teammate after the actor in registration order.
+        private static string FindNextActingAlly(CombatState state, CombatantRef actor)
         {
-            var order = engine.CurrentRoundOrder;
+            var order = state.LivingUnitIds;
             var actorIndex = -1;
             for (var index = 0; index < order.Count; index++)
             {
@@ -266,12 +241,12 @@ namespace Tower.Core
             for (var offset = 1; offset < order.Count; offset++)
             {
                 var id = order[(actorIndex + offset) % order.Count];
-                if (!engine.IsAlive(id))
+                if (!state.IsAlive(id))
                 {
                     continue;
                 }
 
-                var unit = engine.GetCombatant(id);
+                var unit = state.GetCombatant(id);
                 if (unit != null && unit.Team == actor.Team)
                 {
                     return id;
@@ -340,12 +315,12 @@ namespace Tower.Core
             AbilityDef ability,
             CombatantRef target,
             DispositionWeights weights,
-            int currentRound,
+            float elapsedSeconds,
             TurnContext context)
         {
             var score = 0f;
             var isEnemyTarget = target.Team != actor.Team;
-            var damage = isEnemyTarget ? PredictDamage(actor, ability, target, currentRound) : 0;
+            var damage = isEnemyTarget ? PredictDamage(actor, ability, target, elapsedSeconds) : 0;
             score += weights.DamageWeight * damage;
 
             if (isEnemyTarget && damage > 0 && damage >= target.State.CurrentHp)
@@ -355,7 +330,7 @@ namespace Tower.Core
 
             if (ability.Tag == AbilityTag.Consume
                 && ability.TargetMark != null
-                && statusBoard.HasMark(target.UnitId, ability.TargetMark.Id, currentRound))
+                && statusBoard.HasMark(target.UnitId, ability.TargetMark.Id, elapsedSeconds))
             {
                 score += weights.ConsumeMarkedBonus;
             }
@@ -380,7 +355,7 @@ namespace Tower.Core
         }
 
         // Mirrors AbilityResolver.DealPowerDamage so scores predict real outcomes.
-        private int PredictDamage(CombatantRef actor, AbilityDef ability, CombatantRef target, int currentRound)
+        private int PredictDamage(CombatantRef actor, AbilityDef ability, CombatantRef target, float elapsedSeconds)
         {
             if (ability.Tag == AbilityTag.Amplify || ability.BasePower <= 0)
             {
@@ -389,10 +364,10 @@ namespace Tower.Core
 
             var tagMultiplier = ability.Tag == AbilityTag.Consume
                 && ability.TargetMark != null
-                && statusBoard.HasMark(target.UnitId, ability.TargetMark.Id, currentRound)
+                && statusBoard.HasMark(target.UnitId, ability.TargetMark.Id, elapsedSeconds)
                 ? AbilityResolver.ConsumeBonusMultiplier
                 : 1f;
-            var amplifyMultiplier = statusBoard.GetAmplifyMultiplier(actor.UnitId, currentRound);
+            var amplifyMultiplier = statusBoard.GetAmplifyMultiplier(actor.UnitId, elapsedSeconds);
             var power = ability.BasePower * tagMultiplier * amplifyMultiplier;
             var raw = power + actor.State.Definition.Attack - target.State.Definition.Defense;
             return Math.Max(1, (int)Math.Round(raw, MidpointRounding.AwayFromZero));

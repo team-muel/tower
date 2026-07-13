@@ -1,9 +1,8 @@
 namespace Tower.Core
 {
-    // T4 seam: the turn engine delegates UseAbilityCommand resolution to this
-    // interface so rules logic stays outside the engine (AbilityResolver implements it).
+    // T4 seam: ability resolution stays outside the combat state container.
     public interface IAbilityExecutor
     {
-        Result Execute(TurnEngine engine, UseAbilityCommand command);
+        Result Execute(CombatState state, UseAbilityCommand command);
     }
 }

@@ -3,20 +3,17 @@ using Tower.Core;
 
 namespace Tower.Tests.EditMode
 {
-    // T20: analog-specific behaviour — euclidean distance, straight-line
-    // ClampMove, circular collision, deterministic sampling and the
-    // grid-to-analog scale contract.
+    // Analog-specific behaviour: euclidean distance, straight-line ClampMove,
+    // circular collision and deterministic sampling.
     public sealed class AnalogBattlefieldTests
     {
         [Test]
-        public void Scale_OneCellIsOneAnalogUnit()
+        public void FromRoom_UsesRoomDimensions()
         {
             var battlefield = AnalogBattlefield.FromRoom(6, 4);
 
             Assert.That(battlefield.Width, Is.EqualTo(6f));
             Assert.That(battlefield.Height, Is.EqualTo(4f));
-            Assert.That(BattleScale.ToBattlePos(new GridPos(2, 3)), Is.EqualTo(new BattlePos(2.5f, 3.5f)));
-            Assert.That(BattleScale.ToGridPos(new BattlePos(2.5f, 3.5f)), Is.EqualTo(new GridPos(2, 3)));
         }
 
         [Test]

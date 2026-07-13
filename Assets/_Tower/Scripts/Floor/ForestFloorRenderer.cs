@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using Tower.Core;
 using Tower.Gen;
-using Tower.UI;
 using UnityEngine;
 
 namespace Tower.Floor
