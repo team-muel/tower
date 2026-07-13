@@ -70,10 +70,10 @@ namespace Tower.Tests.EditMode
         public void ChooseAction_PrefersKillableTarget()
         {
             InitScorer();
-            var strike = Ability("strike", AbilityTag.Apply, 20, 8);
+            var strike = Ability("strike", AbilityTag.Apply, 5, 8);
             var caster = Unit("caster", CombatTeam.Player, abilities: new[] { strike });
             var healthy = Unit("enemy-a", CombatTeam.Enemy, currentHp: 20);
-            var wounded = Unit("enemy-b", CombatTeam.Enemy, currentHp: 4);
+            var wounded = Unit("enemy-b", CombatTeam.Enemy, currentHp: 3);
             Place("caster", 2f, 2f);
             Place("enemy-a", 3f, 2f);
             Place("enemy-b", 2f, 3f);

@@ -26,7 +26,8 @@ namespace Tower.Tests.EditMode
             var battlefield = new AnalogBattlefield(4f, 2f);
             var statusBoard = new StatusBoard();
             var metrics = new CombatMetrics();
-            var strike = Track(AbilityDef.CreateRuntime("strike", AbilityTag.Apply, 5, 2, AbilityTargetType.Enemy));
+            // A single real-time resolution must be lethal so combat-end metrics are observable without a turn loop.
+            var strike = Track(AbilityDef.CreateRuntime("strike", AbilityTag.Apply, 6, 2, AbilityTargetType.Enemy));
             var caster = Unit("caster", CombatTeam.Player, currentHp: 20, abilities: new[] { strike });
             var enemy = Unit("enemy", CombatTeam.Enemy, currentHp: 6, abilities: new[] { strike });
             Assert.That(battlefield.TryPlaceOccupant("caster", new BattlePos(1f, 1f)), Is.True);
