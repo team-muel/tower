@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Tower.Core;
 using UnityEngine;
 
@@ -63,7 +64,7 @@ namespace Tower.Combat
     public sealed class PillbugBrain : MonoBehaviour
     {
         private Transform player;
-        private Transform companion;
+        private Transform[] companions = new Transform[0];
         private PillbugTuning tuning;
         private TelegraphState telegraph;
         private Renderer bodyRenderer;
@@ -80,11 +81,31 @@ namespace Tower.Combat
 
         public void Configure(Transform player, Transform companion, PillbugTuning tuning)
         {
+            Configure(
+                player,
+                companion == null ? new Transform[0] : new[] { companion },
+                tuning);
+        }
+
+        public void Configure(
+            Transform player,
+            IReadOnlyList<Transform> companionTargets,
+            PillbugTuning tuning)
+        {
             this.player = player;
-            this.companion = companion;
+            companions = companionTargets == null
+                ? new Transform[0]
+                : CopyTargets(companionTargets);
             this.tuning = tuning;
             telegraph = new TelegraphState(tuning.Durations);
             bodyRenderer = GetComponent<Renderer>();
+            if (bodyRenderer != null)
+            {
+                bodyRenderer.sharedMaterial = TowerRuntimeMaterials.CreateLit(
+                    "Pillbug Body Material",
+                    tuning.NormalColor);
+            }
+
             materialProperties = new MaterialPropertyBlock();
             EnsureWindupRing();
             SetBodyColor(tuning.NormalColor);
@@ -164,8 +185,13 @@ namespace Tower.Combat
         {
             Transform best = player;
             var bestDistance = best == null ? float.PositiveInfinity : PlanarDistance(transform.position, best.position);
-            if (companion != null)
+            foreach (var companion in companions)
             {
+                if (companion == null)
+                {
+                    continue;
+                }
+
                 var companionDistance = PlanarDistance(transform.position, companion.position);
                 if (companionDistance < bestDistance)
                 {
@@ -175,6 +201,17 @@ namespace Tower.Combat
             }
 
             return bestDistance <= tuning.AwarenessRadius ? best : null;
+        }
+
+        private static Transform[] CopyTargets(IReadOnlyList<Transform> targets)
+        {
+            var copy = new Transform[targets.Count];
+            for (var index = 0; index < targets.Count; index++)
+            {
+                copy[index] = targets[index];
+            }
+
+            return copy;
         }
 
         private void EnsureWindupRing()
@@ -192,7 +229,9 @@ namespace Tower.Combat
             windupRing.useWorldSpace = false;
             windupRing.widthMultiplier = tuning.RingWidth;
             windupRing.positionCount = Mathf.Max(3, tuning.RingSegments);
-            windupRing.material = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            windupRing.material = TowerRuntimeMaterials.CreateLit(
+                "Pillbug Windup Ring Material",
+                Color.white);
             for (var index = 0; index < windupRing.positionCount; index++)
             {
                 var angle = (Mathf.PI * 2f * index) / windupRing.positionCount;

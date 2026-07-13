@@ -16,20 +16,24 @@ namespace Tower.EditorTools
     {
         private const string ScenePath = "Assets/_Tower/Scenes/_CombatSpike.unity";
         private const string HumanPrefabPath = "Assets/Blink/Art/Characters/LowPoly/FREE_HumanLowPoly/Prefabs_Humans/HumanMale_Character_FREE.prefab";
+        private const string RuntimeLitMaterialPath = "Assets/_Tower/Resources/TowerRuntimeLit.mat";
         private const string LocomotionControllerPath = "Assets/_Tower/Art/Characters/Animations/PC_Locomotion.controller";
+        private const string ReturnerDefinitionPath = "Assets/_Tower/Data/Characters/C_Returner.asset";
         private const string IdleFbxPath = "Assets/Blink/Art/Animations/Animations_Starter_Pack/Movement/Idle.fbx";
         private const string RunForwardFbxPath = "Assets/Blink/Art/Animations/Animations_Starter_Pack/Movement/RunForward.fbx";
         private const string SprintFbxPath = "Assets/Blink/Art/Animations/Animations_Starter_Pack/Movement/Sprint.fbx";
 
         public static void Create()
         {
+            CompanionEntityAssetBuilder.Create();
             VerifyAnimationClip(IdleFbxPath, "Idle");
             VerifyAnimationClip(RunForwardFbxPath, "RunForward");
             VerifyAnimationClip(SprintFbxPath, "Sprint");
 
             var humanPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(HumanPrefabPath);
             var locomotionController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(LocomotionControllerPath);
-            if (humanPrefab == null || locomotionController == null)
+            var runtimeLitMaterial = AssetDatabase.LoadAssetAtPath<Material>(RuntimeLitMaterialPath);
+            if (humanPrefab == null || locomotionController == null || runtimeLitMaterial == null)
             {
                 throw new InvalidOperationException("Combat spike character source assets are missing.");
             }
@@ -37,9 +41,9 @@ namespace Tower.EditorTools
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             CreateGround();
             CreateLighting();
-            var player = CreatePlayer(scene, humanPrefab, locomotionController);
+            var player = CreatePlayer(scene, humanPrefab, locomotionController, runtimeLitMaterial);
             CreateCamera(player.transform);
-            CreateEncounterHost(player.transform, humanPrefab, locomotionController);
+            CreateEncounterHost(player.transform);
             EditorSceneManager.SaveScene(scene, ScenePath, true);
             AssetDatabase.SaveAssets();
         }
@@ -60,7 +64,11 @@ namespace Tower.EditorTools
             lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
         }
 
-        private static GameObject CreatePlayer(Scene scene, GameObject humanPrefab, RuntimeAnimatorController locomotionController)
+        private static GameObject CreatePlayer(
+            Scene scene,
+            GameObject humanPrefab,
+            RuntimeAnimatorController locomotionController,
+            Material runtimeLitMaterial)
         {
             var player = new GameObject("Player");
             SceneManager.MoveGameObjectToScene(player, scene);
@@ -68,6 +76,12 @@ namespace Tower.EditorTools
             var visual = (GameObject)PrefabUtility.InstantiatePrefab(humanPrefab, scene);
             visual.name = "PlayerVisual";
             visual.transform.SetParent(player.transform, false);
+            foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
+                var materialCount = Math.Max(1, renderer.sharedMaterials.Length);
+                renderer.sharedMaterials = Enumerable.Repeat(runtimeLitMaterial, materialCount).ToArray();
+            }
+
             var animator = visual.GetComponentInChildren<Animator>();
             if (animator == null)
             {
@@ -100,19 +114,30 @@ namespace Tower.EditorTools
 
         private static void CreateCamera(Transform player)
         {
+            var rigObject = new GameObject("PlayerCameraRig");
             var cameraObject = new GameObject("PlayerCamera");
+            cameraObject.transform.SetParent(rigObject.transform, false);
             cameraObject.tag = "MainCamera";
             cameraObject.AddComponent<Camera>();
             cameraObject.AddComponent<AudioListener>();
-            var rig = cameraObject.AddComponent<FixedIsoFollowCameraRig>();
+            var rig = rigObject.AddComponent<FixedIsoFollowCameraRig>();
             rig.SetFocusTarget(player);
         }
 
-        private static void CreateEncounterHost(
-            Transform player,
-            GameObject humanPrefab,
-            RuntimeAnimatorController locomotionController)
+        private static void CreateEncounterHost(Transform player)
         {
+            var returner = AssetDatabase.LoadAssetAtPath<Tower.Core.CharacterDef>(ReturnerDefinitionPath);
+            var companionProfiles = new[]
+            {
+                AssetDatabase.LoadAssetAtPath<CompanionVisualProfile>(CompanionEntityAssetBuilder.EmberProfilePath),
+                AssetDatabase.LoadAssetAtPath<CompanionVisualProfile>(CompanionEntityAssetBuilder.WardProfilePath),
+                AssetDatabase.LoadAssetAtPath<CompanionVisualProfile>(CompanionEntityAssetBuilder.GlassProfilePath),
+            };
+            if (returner == null || companionProfiles.Any(profile => profile == null))
+            {
+                throw new InvalidOperationException("T51 companion profiles are missing.");
+            }
+
             var hostObject = new GameObject("CombatEncounterHost");
             var timeDilation = hostObject.AddComponent<TimeDilationService>();
             var slowMoInput = hostObject.AddComponent<SlowMoInput>();
@@ -120,17 +145,20 @@ namespace Tower.EditorTools
 
             var hostProperties = new SerializedObject(host);
             hostProperties.FindProperty("player").objectReferenceValue = player;
-            hostProperties.FindProperty("companionPrefab").objectReferenceValue = humanPrefab;
-            hostProperties.FindProperty("companionLocomotionController").objectReferenceValue = locomotionController;
+            hostProperties.FindProperty("playerDefinition").objectReferenceValue = returner;
+            var profilesProperty = hostProperties.FindProperty("companionProfiles");
+            profilesProperty.arraySize = companionProfiles.Length;
+            for (var index = 0; index < companionProfiles.Length; index++)
+            {
+                profilesProperty.GetArrayElementAtIndex(index).objectReferenceValue = companionProfiles[index];
+            }
             hostProperties.FindProperty("pillbugSpawnDistance").floatValue = 8f;
-            hostProperties.FindProperty("companionSpawnDistance").floatValue = 2f;
-            hostProperties.FindProperty("awarenessRadius").floatValue = 12f;
+            hostProperties.FindProperty("awarenessRadius").floatValue = 7f;
             hostProperties.FindProperty("windupTriggerDistance").floatValue = 2.5f;
             hostProperties.FindProperty("dashRange").floatValue = 3f;
             hostProperties.FindProperty("windupSeconds").floatValue = 0.9f;
             hostProperties.FindProperty("commitSeconds").floatValue = 0.25f;
             hostProperties.FindProperty("recoverSeconds").floatValue = 0.6f;
-            hostProperties.FindProperty("companionLeashDistance").floatValue = 4f;
             hostProperties.ApplyModifiedPropertiesWithoutUndo();
 
             var inputProperties = new SerializedObject(slowMoInput);

@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b82e23153448bfa4da68fd3a64c2c979, type: 3}
+  m_Name: CV_GlassBreaker
+  m_EditorClassIdentifier: Tower.Combat::Tower.Combat.CompanionVisualProfile
+  characterDefinition: {fileID: 11400000, guid: 842ad6e72621c344198df099b32f9395, type: 2}
+  bodyPrefab: {fileID: 7057395844601738757, guid: 89d1e97720edf8d41bd452844e572d73, type: 3}
+  locomotionController: {fileID: 9100000, guid: e3edabcfa4bc1bd4eb50c08190d4a100, type: 2}
+  accentColor: {r: 0.72, g: 0.54, b: 0.22, a: 1}
+  formationOffset: {x: 0, y: 0, z: -2.55}
+  arriveDistance: 0.2
+  moveSpeed: 3.5
+  turnSpeed: 540
