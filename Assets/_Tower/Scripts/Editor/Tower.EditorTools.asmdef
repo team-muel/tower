@@ -3,6 +3,7 @@
   "rootNamespace": "Tower.EditorTools",
   "references": [
     "Tower.Core",
+    "Tower.Combat",
     "Tower.Floor"
   ],
   "includePlatforms": [
