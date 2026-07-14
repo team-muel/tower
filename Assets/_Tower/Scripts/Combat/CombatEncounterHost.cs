@@ -17,6 +17,9 @@ namespace Tower.Combat
         [SerializeField] private CompanionVisualProfile[] companionProfiles;
         [Header("Provisional spawn positions (metres)")]
         [SerializeField, Min(0f)] private float pillbugSpawnDistance = 8f;
+        [Header("Encounter entry")]
+        [SerializeField, Min(0.01f)] private float encounterTriggerRadius = 7f;
+        [SerializeField, Min(0.01f)] private float encounterIntroHoldSeconds = 0.45f;
         [Header("Provisional pillbug timing and distance")]
         [SerializeField, Min(0f)] private float awarenessRadius = 12f;
         [SerializeField, Min(0f)] private float windupTriggerDistance = 2.5f;
@@ -42,6 +45,7 @@ namespace Tower.Combat
         public CombatState CombatState { get; private set; }
         public PillbugBrain Pillbug { get; private set; }
         public IReadOnlyList<CompanionEntity> Companions { get; private set; }
+        public EncounterEngagementController Engagement { get; private set; }
 
         private void Start()
         {
@@ -110,6 +114,23 @@ namespace Tower.Combat
                 player,
                 Companions.Select(companion => companion.transform).ToArray(),
                 BuildPillbugTuning());
+            var playerMovement = player.GetComponents<Behaviour>()
+                .FirstOrDefault(component => component.GetType().Name == "PlayerIsoController");
+            Engagement = gameObject.AddComponent<EncounterEngagementController>();
+            var engagementResult = Engagement.Configure(
+                player,
+                Pillbug.transform,
+                playerMovement,
+                Pillbug,
+                encounterTriggerRadius,
+                encounterIntroHoldSeconds);
+            if (engagementResult.IsFailure)
+            {
+                Debug.LogError(engagementResult.Error, this);
+                enabled = false;
+                return;
+            }
+
             var slowMoInput = GetComponent<SlowMoInput>();
             if (slowMoInput != null)
             {

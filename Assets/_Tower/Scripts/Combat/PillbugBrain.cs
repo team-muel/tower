@@ -75,9 +75,11 @@ namespace Tower.Combat
         private Transform dashTarget;
         private bool didFlashContact;
         private float flashEndsAt;
+        private bool engagementEnabled = true;
 
         public TelegraphState Telegraph => telegraph;
         public CounterCoverageResult CoverageResult { get; private set; } = CounterCoverageResult.Missed;
+        public bool EngagementEnabled => engagementEnabled;
 
         public void Configure(Transform player, Transform companion, PillbugTuning tuning)
         {
@@ -116,9 +118,18 @@ namespace Tower.Combat
             CoverageResult = result;
         }
 
+        public void SetEngagementEnabled(bool value)
+        {
+            engagementEnabled = value;
+            if (!value && windupRing != null)
+            {
+                windupRing.enabled = false;
+            }
+        }
+
         private void Update()
         {
-            if (telegraph == null)
+            if (telegraph == null || !engagementEnabled)
             {
                 return;
             }

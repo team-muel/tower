@@ -152,6 +152,8 @@ namespace Tower.EditorTools
                 profilesProperty.GetArrayElementAtIndex(index).objectReferenceValue = companionProfiles[index];
             }
             hostProperties.FindProperty("pillbugSpawnDistance").floatValue = 8f;
+            hostProperties.FindProperty("encounterTriggerRadius").floatValue = 7f;
+            hostProperties.FindProperty("encounterIntroHoldSeconds").floatValue = 0.45f;
             hostProperties.FindProperty("awarenessRadius").floatValue = 7f;
             hostProperties.FindProperty("windupTriggerDistance").floatValue = 2.5f;
             hostProperties.FindProperty("dashRange").floatValue = 3f;
