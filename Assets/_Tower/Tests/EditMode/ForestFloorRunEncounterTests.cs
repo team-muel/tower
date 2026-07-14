@@ -1,0 +1,108 @@
+using System.Linq;
+using System.Reflection;
+using NUnit.Framework;
+using Tower.Core;
+using Tower.Floor;
+using Tower.Gen;
+using UnityEngine;
+
+namespace Tower.Tests.EditMode
+{
+    public sealed class ForestFloorRunEncounterTests
+    {
+        [Test]
+        public void Rebuild_DefaultPreviewSelectsFirstRunEventAndMatchingNode()
+        {
+            GameObject host = new GameObject("forest-run-event");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                renderer.Rebuild();
+
+                Assert.That(renderer.ScheduledRunEvent, Is.Not.Null);
+                Assert.That(renderer.ScheduledRunEvent.Kind, Is.EqualTo(RunEventKind.Encounter));
+                Assert.That(renderer.EncounterNodeId, Is.GreaterThanOrEqualTo(0));
+                Assert.That(renderer.Graph.NodeById(renderer.EncounterNodeId).IsEntrance, Is.False);
+                Assert.That(host.GetComponentInChildren<ForestPlayerController>(), Is.Not.Null);
+                Assert.That(renderer.CameraTransform, Is.Not.Null);
+                Assert.That(host.GetComponentsInChildren<MeshCollider>()
+                    .Any(collider => collider.name.StartsWith("ForkTrail_")), Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void Rebuild_UnscheduledFloorDoesNotActivateComposerEncounter()
+        {
+            GameObject host = new GameObject("forest-no-run-event");
+            try
+            {
+                RunEventPlan plan = RunEventPlan.Create(777);
+                int unscheduledFloor = Enumerable.Range(1, 9)
+                    .First(floor => plan.Slots.All(slot => slot.FloorNumber != floor));
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                SetPrivateField(renderer, "runFloorNumber", unscheduledFloor);
+
+                renderer.Rebuild();
+
+                Assert.That(renderer.ScheduledRunEvent, Is.Null);
+                Assert.That(renderer.EncounterNodeId, Is.EqualTo(-1));
+                Assert.That(renderer.IsEncounterBlocking, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void Rebuild_FloorTenSelectsGeneratedBossNode()
+        {
+            GameObject host = new GameObject("forest-boss-run-event");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                SetPrivateField(renderer, "runFloorNumber", RunEventPlan.FloorCount);
+
+                renderer.Rebuild();
+
+                Assert.That(renderer.ScheduledRunEvent.Kind, Is.EqualTo(RunEventKind.Boss));
+                FloorNode node = renderer.Graph.NodeById(renderer.EncounterNodeId);
+                Assert.That(node.IsBossRoom, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
+        public void ExitProximity_StartsVisibleForkTraversalWithoutPhysicsCallback()
+        {
+            GameObject host = new GameObject("forest-fork-proximity");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                renderer.Rebuild();
+                var layout = new LinearStubLayout(renderer.Graph);
+                renderer.PlayerTransform.position = layout.GetField(renderer.CurrentNodeId).ExitPoint;
+
+                Assert.That(renderer.TryEnterNearestForkAtExit(), Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        private static void SetPrivateField<T>(T target, string fieldName, object value)
+        {
+            FieldInfo field = typeof(T).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(field, Is.Not.Null, fieldName);
+            field.SetValue(target, value);
+        }
+    }
+}

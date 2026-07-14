@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Tower.Combat;
 using Tower.Core;
 using Tower.Gen;
 using UnityEngine;
@@ -30,6 +31,10 @@ namespace Tower.Floor
         [SerializeField, Range(3, 5)] private int nodeCount = 4;
         [SerializeField] private bool isBossFloor;
         [SerializeField] private bool includeCamp = true;
+
+        [Header("Run event selection")]
+        [SerializeField] private int runSeed = 777;
+        [SerializeField, Range(0, RunEventPlan.FloorCount)] private int runFloorNumber;
 
         [Header("Layout (stub) tuning")]
         [SerializeField, Min(8f)] private float travelLength = 26f;
@@ -61,6 +66,10 @@ namespace Tower.Floor
         [SerializeField] private GameObject eventMarkerPrefab;
         [SerializeField] private GameObject playerPrefab;
 
+        [Header("Generated encounter entry")]
+        [SerializeField, Min(0.01f)] private float encounterTriggerRadius = 7f;
+        [SerializeField, Min(0.01f)] private float encounterIntroHoldSeconds = 0.45f;
+
         private FloorGraph _graph;
         private IFloorLayoutSource _layout;
         private BiomeDef _biomeDef;
@@ -73,10 +82,22 @@ namespace Tower.Floor
         private Transform _root;
         private Material _terrainMat;
         private bool _busy;
+        private FloorGenParams _generationParameters;
+        private RunEventProgress _runEventProgress;
+        private RunEventSlot _scheduledRunEvent;
+        private FloorNodeContent _scheduledNodeContent;
+        private int _encounterNodeId = -1;
+        private GeneratedFloorEncounterHost _activeEncounter;
+        private ForestPlayerController _playerMovement;
 
         public FloorGraph Graph => _graph;
         public FloorExploration Exploration => _exploration;
         public int CurrentNodeId { get; private set; }
+        public RunEventSlot ScheduledRunEvent => _scheduledRunEvent;
+        public int EncounterNodeId => _encounterNodeId;
+        public bool IsEncounterBlocking => _activeEncounter != null && !_activeEncounter.IsResolved;
+        public Transform CameraTransform => cameraTransform;
+        public Transform PlayerTransform => playerTransform;
 
         // Allows the orchestrator's Core->interface adapter to inject a real layout.
         public void SetLayoutSource(IFloorLayoutSource source) => _layout = source;
@@ -84,6 +105,11 @@ namespace Tower.Floor
         private void Start()
         {
             if (buildOnStart) Rebuild();
+        }
+
+        private void Update()
+        {
+            TryEnterNearestForkAtExit();
         }
 
         [ContextMenu("Rebuild Forest Floor")]
@@ -95,17 +121,38 @@ namespace Tower.Floor
             _nodeOrigin.Clear();
             _registries.Clear();
 
-            FloorGenParams parameters = new FloorGenParams(
+            RunEventPlan runPlan = RunEventPlan.Create(runSeed);
+            _runEventProgress = RunEventProgress.Create(runPlan);
+            int effectiveFloor = runFloorNumber == 0
+                ? runPlan.Slots[0].FloorNumber
+                : runFloorNumber;
+            _scheduledRunEvent = null;
+            for (int index = 0; index < runPlan.Slots.Count; index++)
+            {
+                if (runPlan.Slots[index].FloorNumber == effectiveFloor)
+                {
+                    _scheduledRunEvent = runPlan.Slots[index];
+                    break;
+                }
+            }
+
+            _scheduledNodeContent = null;
+            _encounterNodeId = -1;
+            _activeEncounter = null;
+
+            bool effectiveBossFloor = isBossFloor
+                || (_scheduledRunEvent != null && _scheduledRunEvent.Kind == RunEventKind.Boss);
+            _generationParameters = new FloorGenParams(
                 seed,
                 new IntRange(nodeCount, nodeCount),
-                isBossFloor,
+                effectiveBossFloor,
                 new IntRange(8, 14),
                 new[] { "melee", "ranged", "elite" },
                 "boss",
                 includeCamp,
                 biomeId);
 
-            _graph = FloorGenerator.Generate(parameters);
+            _graph = FloorGenerator.Generate(_generationParameters);
             _biomeDef = BiomeDef.For(biomeId);
             _theme = _graph.BiomeTheme;
             if (_layout == null)
@@ -125,12 +172,50 @@ namespace Tower.Floor
                 BuildNode(_graph.Nodes[i]);
             }
 
+            SelectScheduledEncounterNode();
+
             for (int i = 0; i < _graph.Nodes.Count; i++)
             {
                 BuildForks(_graph.Nodes[i].Id);
             }
 
             InitTraversal();
+        }
+
+        private void SelectScheduledEncounterNode()
+        {
+            if (_scheduledRunEvent == null)
+            {
+                return;
+            }
+
+            for (int index = 0; index < _graph.Nodes.Count; index++)
+            {
+                FloorNode node = _graph.Nodes[index];
+                FloorNodeContent content = FloorNodeBinder.Bind(_graph, node, _generationParameters);
+                if (!content.Encounter.HasEncounter)
+                {
+                    continue;
+                }
+
+                bool needsBoss = _scheduledRunEvent.Kind == RunEventKind.Boss;
+                if (content.Encounter.IsBoss != needsBoss)
+                {
+                    continue;
+                }
+
+                _encounterNodeId = node.Id;
+                _scheduledNodeContent = content;
+                Debug.Log(
+                    $"[FloorRun] event={_scheduledRunEvent.EventId} floor={_scheduledRunEvent.FloorNumber} "
+                    + $"node={_encounterNodeId} kind={_scheduledRunEvent.Kind}.",
+                    this);
+                return;
+            }
+
+            Debug.LogError(
+                $"No generated encounter node matched run event {_scheduledRunEvent.EventId}.",
+                this);
         }
 
         private void BuildNode(FloorNode node)
@@ -397,6 +482,7 @@ namespace Tower.Floor
                 go.transform.SetParent(_root, false);
                 go.AddComponent<MeshFilter>().sharedMesh = mesh;
                 Paint(go.AddComponent<MeshRenderer>(), RouteVisuals.Tint(trail.RouteType));
+                go.AddComponent<MeshCollider>().sharedMesh = mesh;
                 AddTrailTrigger(go.transform, pts, fromNodeId, trail.RouteId);
             }
         }
@@ -489,6 +575,7 @@ namespace Tower.Floor
             }
 
             _exploration.MarkVisited(CurrentNodeId);
+            TryStartCurrentNodeEncounter();
         }
 
         private void EnsurePlayer()
@@ -520,6 +607,27 @@ namespace Tower.Floor
             {
                 cameraTransform = Camera.main.transform;
             }
+
+            if (cameraTransform == null)
+            {
+                GameObject cameraObject = new GameObject("GeneratedFloorCamera");
+                cameraObject.tag = "MainCamera";
+                cameraObject.transform.SetParent(transform, false);
+                Camera generatedCamera = cameraObject.AddComponent<Camera>();
+                generatedCamera.clearFlags = CameraClearFlags.Skybox;
+                cameraObject.AddComponent<AudioListener>();
+                ForestFloorCamera follow = cameraObject.AddComponent<ForestFloorCamera>();
+                follow.Configure(playerTransform);
+                cameraTransform = cameraObject.transform;
+            }
+
+            _playerMovement = playerTransform.GetComponent<ForestPlayerController>();
+            if (_playerMovement == null)
+            {
+                _playerMovement = playerTransform.gameObject.AddComponent<ForestPlayerController>();
+            }
+
+            _playerMovement.Configure(cameraTransform);
         }
 
         // True when the collider belongs to the traversal player (physics path).
@@ -530,17 +638,75 @@ namespace Tower.Floor
         }
 
         // Called by a ForkTrailTrigger when the player walks into a fork mouth.
-        public void OnTrailEntered(ForkTrailTrigger trigger)
+        public bool OnTrailEntered(ForkTrailTrigger trigger)
         {
-            if (_busy || trigger == null || _graph == null) return;
-            if (trigger.FromNodeId != CurrentNodeId) return; // only the current node's forks are live
+            if (_busy || IsEncounterBlocking || trigger == null || _graph == null) return false;
+            if (trigger.FromNodeId != CurrentNodeId) return false; // only the current node's forks are live
 
-            TrailNavigator.ForkResolution res = TrailNavigator.ResolveByRouteId(_graph, trigger.RouteId);
-            if (!res.Found) return;
+            return BeginTraverse(trigger.RouteId);
+        }
+
+        // Transform-driven kinematic players do not produce trigger callbacks
+        // consistently on every standalone backend. The node-exit proximity is
+        // the canonical spatial fallback and selects the fork nearest player X.
+        public bool TryEnterNearestForkAtExit()
+        {
+            if (_busy || IsEncounterBlocking || playerTransform == null || _graph == null || _layout == null)
+            {
+                return false;
+            }
+
+            FloorFieldRect field = _layout.GetField(CurrentNodeId);
+            Vector3 player = playerTransform.position;
+            Vector3 exit = field.ExitPoint;
+            player.y = 0f;
+            exit.y = 0f;
+            if (Vector3.Distance(player, exit) > 1.5f)
+            {
+                return false;
+            }
+
+            IReadOnlyList<FloorForkTrail> forks = _layout.GetForks(CurrentNodeId);
+            if (forks.Count == 0)
+            {
+                return false;
+            }
+
+            FloorForkTrail closest = forks[0];
+            float closestDistance = ForkLateralDistance(closest, player.x);
+            for (int index = 1; index < forks.Count; index++)
+            {
+                float candidateDistance = ForkLateralDistance(forks[index], player.x);
+                if (candidateDistance < closestDistance)
+                {
+                    closest = forks[index];
+                    closestDistance = candidateDistance;
+                }
+            }
+
+            return BeginTraverse(closest.RouteId);
+        }
+
+        private bool BeginTraverse(int routeId)
+        {
+            if (_busy || IsEncounterBlocking || _graph == null)
+            {
+                return false;
+            }
+
+            TrailNavigator.ForkResolution res = TrailNavigator.ResolveByRouteId(_graph, routeId);
+            if (!res.Found) return false;
 
             _exploration.MarkScouted(res.RouteId);
             List<Vector3> path = TrailPointsFor(res.FromNodeId, res.RouteId);
             StartCoroutine(Traverse(res, path));
+            return true;
+        }
+
+        private static float ForkLateralDistance(FloorForkTrail fork, float playerX)
+        {
+            int sample = Mathf.Min(1, fork.Waypoints.Count - 1);
+            return Mathf.Abs(fork.Waypoints[sample].x - playerX);
         }
 
         private List<Vector3> TrailPointsFor(int fromNodeId, int routeId)
@@ -560,6 +726,7 @@ namespace Tower.Floor
         private IEnumerator Traverse(TrailNavigator.ForkResolution res, List<Vector3> path)
         {
             _busy = true;
+            if (_playerMovement != null) _playerMovement.enabled = false;
             for (int i = 0; i < path.Count; i++)
             {
                 yield return WalkTo(path[i]);
@@ -571,11 +738,58 @@ namespace Tower.Floor
             CurrentNodeId = res.ToNodeId;
             _exploration.MarkVisited(res.ToNodeId);
             _busy = false;
+            if (_playerMovement != null) _playerMovement.enabled = true;
+            Debug.Log($"[FloorTraversal] Arrived node={res.ToNodeId} route={res.RouteId}.", this);
+            TryStartCurrentNodeEncounter();
 
-            if (res.ArrivesAtExit)
+            if (res.ArrivesAtExit && !IsEncounterBlocking)
             {
                 yield return WalkTo(dest.Center);
                 TriggerAscend();
+            }
+        }
+
+        private void TryStartCurrentNodeEncounter()
+        {
+            if (_activeEncounter != null || _scheduledNodeContent == null
+                || CurrentNodeId != _encounterNodeId || playerTransform == null)
+            {
+                return;
+            }
+
+            FloorFieldRect field = _layout.GetField(CurrentNodeId);
+            Vector3 center = field.Center;
+            Vector3 spawnCenter = new Vector3(center.x, GroundY(CurrentNodeId, center.x, center.z), center.z);
+            GameObject host = new GameObject($"GeneratedEncounter_{_scheduledRunEvent.EventId}");
+            host.transform.SetParent(_root, false);
+            _activeEncounter = host.AddComponent<GeneratedFloorEncounterHost>();
+            Result configured = _activeEncounter.Configure(
+                playerTransform,
+                _playerMovement,
+                _scheduledNodeContent.Encounter,
+                _scheduledRunEvent,
+                spawnCenter,
+                OnEncounterResolved,
+                encounterTriggerRadius,
+                encounterIntroHoldSeconds);
+            if (configured.IsFailure)
+            {
+                Debug.LogError(configured.Error, this);
+                DestroyGenerated(host);
+                _activeEncounter = null;
+            }
+        }
+
+        private void OnEncounterResolved(string eventId)
+        {
+            Result<RunEventProgress> completed = _runEventProgress.CompleteNext(eventId);
+            if (completed.IsSuccess)
+            {
+                _runEventProgress = completed.Value;
+            }
+            else
+            {
+                Debug.LogError(completed.Error, this);
             }
         }
 

@@ -3,7 +3,8 @@
   "rootNamespace": "Tower.Floor",
   "references": [
     "Tower.Core",
-    "Tower.Gen"
+    "Tower.Gen",
+    "Tower.Combat"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

@@ -13,6 +13,7 @@ namespace Tower.EditorTools
     public static class SpikeBuildRunner
     {
         public const string OutputPath = @"C:\Users\fancy\Tower\Builds\CombatSpike\TowerCombatSpike.exe";
+        public const string FloorEncounterOutputPath = @"C:\Users\fancy\Tower\Builds\FloorEncounter\TowerFloorEncounter.exe";
 
         private static readonly string[] Scenes =
         {
@@ -42,6 +43,39 @@ namespace Tower.EditorTools
             if (summary.result != BuildResult.Succeeded)
             {
                 throw new InvalidOperationException($"CombatSpike Windows64 build failed: {summary.result}");
+            }
+        }
+
+        public static void BuildFloorEncounterWindows64()
+        {
+            BuildSingleScene(
+                "Assets/_Tower/Scenes/_FloorPreview.unity",
+                FloorEncounterOutputPath,
+                "FloorEncounter");
+        }
+
+        private static void BuildSingleScene(string scene, string outputPath, string label)
+        {
+            var directory = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var options = new BuildPlayerOptions
+            {
+                scenes = new[] { scene },
+                locationPathName = outputPath,
+                target = BuildTarget.StandaloneWindows64,
+                options = BuildOptions.None
+            };
+
+            var report = BuildPipeline.BuildPlayer(options);
+            var summary = report.summary;
+            Debug.Log($"[SpikeBuildRunner] {label} Result={summary.result} Errors={summary.totalErrors} Warnings={summary.totalWarnings} Size={summary.totalSize} Output={outputPath}");
+            if (summary.result != BuildResult.Succeeded)
+            {
+                throw new InvalidOperationException($"{label} Windows64 build failed: {summary.result}");
             }
         }
     }
