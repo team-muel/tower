@@ -121,6 +121,31 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void SaveThenLoad_RoundTripsRunEventPlanAndProgress()
+        {
+            var state = CreateExpedition("a");
+            RunEventProgress progress = RunEventProgress.Create(RunEventPlan.Create(5519));
+            progress = progress.CompleteNext(progress.NextPending.EventId).Value;
+            progress = progress.CompleteNext(progress.NextPending.EventId).Value;
+            var repository = CreateRepository();
+
+            var save = ExpeditionSaveMapper.ToSave(state, runEventProgress: progress);
+            Assert.That(save.IsSuccess, Is.True, save.Error);
+            Assert.That(repository.Save(save.Value).IsSuccess, Is.True);
+
+            var loaded = repository.Load();
+            Assert.That(loaded.IsSuccess, Is.True, loaded.Error);
+            var restored = ExpeditionSaveMapper.ToRunEventProgress(loaded.Value);
+
+            Assert.That(restored.IsSuccess, Is.True, restored.Error);
+            Assert.That(restored.Value.Plan.Seed, Is.EqualTo(5519));
+            Assert.That(restored.Value.CompletedCount, Is.EqualTo(2));
+            Assert.That(restored.Value.Plan.Slots.Select(slot => slot.FloorNumber),
+                Is.EqualTo(progress.Plan.Slots.Select(slot => slot.FloorNumber)));
+            Assert.That(restored.Value.NextPending.EventId, Is.EqualTo(progress.NextPending.EventId));
+        }
+
+        [Test]
         public void Load_WithoutSaveFile_Fails()
         {
             var repository = CreateRepository();
