@@ -11,14 +11,14 @@ namespace Tower.Data
     {
         public readonly string Id;
         public readonly string DisplayName;
-        public readonly int DurationTurns;
+        public readonly float DurationSeconds;
         public readonly bool Stackable;
 
-        public MarkData(string id, string displayName, int durationTurns, bool stackable)
+        public MarkData(string id, string displayName, float durationSeconds, bool stackable)
         {
             Id = id;
             DisplayName = displayName;
-            DurationTurns = durationTurns;
+            DurationSeconds = durationSeconds;
             Stackable = stackable;
         }
     }
@@ -48,7 +48,7 @@ namespace Tower.Data
         public readonly int BasePower;
         public readonly float AmplificationMultiplier;
         public readonly AbilityTargetType TargetType;
-        public readonly int CooldownRounds;
+        public readonly float CooldownSeconds;
 
         public AbilityData(
             string id,
@@ -60,7 +60,7 @@ namespace Tower.Data
             int basePower,
             float amplificationMultiplier,
             AbilityTargetType targetType,
-            int cooldownRounds)
+            float cooldownSeconds)
         {
             Id = id;
             DisplayName = displayName;
@@ -71,7 +71,7 @@ namespace Tower.Data
             BasePower = basePower;
             AmplificationMultiplier = amplificationMultiplier;
             TargetType = targetType;
-            CooldownRounds = cooldownRounds;
+            CooldownSeconds = cooldownSeconds;
         }
     }
 

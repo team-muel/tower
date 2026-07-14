@@ -90,6 +90,47 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void Step_UsesEffectiveSpeedForIndependentRealTimeCadence()
+        {
+            var fixture = CreateFixture(
+                playerHp: 20,
+                enemyHp: 20,
+                playerPosition: new BattlePos(2f, 4f),
+                enemyPosition: new BattlePos(3f, 4f),
+                playerSpeed: 20,
+                enemySpeed: 5,
+                tickSeconds: 0.25f);
+
+            var playerEvents = 0;
+            var enemyEvents = 0;
+            for (var tick = 0; tick < 4; tick++)
+            {
+                var stepped = fixture.Driver.Step();
+                Assert.That(stepped.IsSuccess, Is.True, stepped.Error);
+                foreach (var entry in stepped.Value.Events)
+                {
+                    if (entry.UnitId == "player") playerEvents++;
+                    if (entry.UnitId == "enemy") enemyEvents++;
+                }
+            }
+
+            Assert.That(fixture.State.ElapsedSeconds, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(playerEvents, Is.EqualTo(2));
+            Assert.That(enemyEvents, Is.EqualTo(0));
+            Assert.That(fixture.Driver.SecondsUntilNextAction("player"), Is.EqualTo(0.5f).Within(0.0001f));
+            Assert.That(fixture.Driver.SecondsUntilNextAction("enemy"), Is.EqualTo(1f).Within(0.0001f));
+        }
+
+        [Test]
+        public void ActionIntervalSeconds_UsesSpeedTenAsOneSecondBaseline()
+        {
+            Assert.That(AutonomousCombatDriver.ActionIntervalSeconds(20), Is.EqualTo(0.5f));
+            Assert.That(AutonomousCombatDriver.ActionIntervalSeconds(10), Is.EqualTo(1f));
+            Assert.That(AutonomousCombatDriver.ActionIntervalSeconds(5), Is.EqualTo(2f));
+            Assert.That(AutonomousCombatDriver.ActionIntervalSeconds(0), Is.EqualTo(10f));
+        }
+
+        [Test]
         public void Create_RejectsNonPositiveFixedTickConfiguration()
         {
             var fixture = CreateFixture(playerHp: 20, enemyHp: 20, playerPosition: new BattlePos(2f, 4f), enemyPosition: new BattlePos(10f, 4f));
@@ -106,7 +147,14 @@ namespace Tower.Tests.EditMode
             Assert.That(created.Error, Does.Contain("Tick seconds"));
         }
 
-        private Fixture CreateFixture(int playerHp, int enemyHp, BattlePos playerPosition, BattlePos enemyPosition)
+        private Fixture CreateFixture(
+            int playerHp,
+            int enemyHp,
+            BattlePos playerPosition,
+            BattlePos enemyPosition,
+            int playerSpeed = 10,
+            int enemySpeed = 10,
+            float tickSeconds = 1f)
         {
             var battlefield = new AnalogBattlefield(14f, 8f);
             var statusBoard = new StatusBoard();
@@ -118,8 +166,8 @@ namespace Tower.Tests.EditMode
 
             var playerStrike = Ability("player-strike", 5);
             var enemyStrike = Ability("enemy-strike", 5);
-            var player = Unit("player", CombatTeam.Player, playerHp, playerStrike);
-            var enemy = Unit("enemy", CombatTeam.Enemy, enemyHp, enemyStrike);
+            var player = Unit("player", CombatTeam.Player, playerHp, playerStrike, playerSpeed);
+            var enemy = Unit("enemy", CombatTeam.Enemy, enemyHp, enemyStrike, enemySpeed);
             Assert.That(battlefield.TryPlaceOccupant("player", playerPosition), Is.True);
             Assert.That(battlefield.TryPlaceOccupant("enemy", enemyPosition), Is.True);
             var state = CombatState.Create(new[] { player, enemy }, statusBoard, metrics);
@@ -129,7 +177,7 @@ namespace Tower.Tests.EditMode
                 battlefield,
                 scorer.Value,
                 resolver.Value,
-                tickSeconds: 1f,
+                tickSeconds: tickSeconds,
                 movementUnitsPerSecond: 2f);
             Assert.That(driver.IsSuccess, Is.True, driver.Error);
 
@@ -143,7 +191,7 @@ namespace Tower.Tests.EditMode
             return ability;
         }
 
-        private CombatantRef Unit(string unitId, CombatTeam team, int currentHp, AbilityDef ability)
+        private CombatantRef Unit(string unitId, CombatTeam team, int currentHp, AbilityDef ability, int speed)
         {
             var definition = CharacterDef.CreateRuntime(
                 unitId,
@@ -151,7 +199,7 @@ namespace Tower.Tests.EditMode
                 20,
                 0,
                 0,
-                10,
+                speed,
                 DispositionType.Aggressive,
                 new[] { ability });
             createdObjects.Add(definition);

@@ -14,5 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: Tower.Core::Tower.Core.MarkDef
   id: M_Burn
   displayName: Burn
-  durationTurns: 3
+  durationSeconds: 3
   stackable: 1

@@ -31,7 +31,7 @@ namespace Tower.Tests.EditMode
         [Test]
         public void ApplyMark_StackableMarkAddsStacks()
         {
-            var mark = CreateMark("burn", durationTurns: 2, stackable: true);
+            var mark = CreateMark("burn", durationSeconds: 2f, stackable: true);
 
             Assert.That(statusBoard.ApplyMark("unit", mark, 1).IsSuccess, Is.True);
             Assert.That(statusBoard.ApplyMark("unit", mark, 1).IsSuccess, Is.True);
@@ -42,7 +42,7 @@ namespace Tower.Tests.EditMode
         [Test]
         public void ApplyMark_NonStackableMarkRefreshesDuration()
         {
-            var mark = CreateMark("burn", durationTurns: 1, stackable: false);
+            var mark = CreateMark("burn", durationSeconds: 1f, stackable: false);
 
             Assert.That(statusBoard.ApplyMark("unit", mark, 1).IsSuccess, Is.True);
             Assert.That(statusBoard.ApplyMark("unit", mark, 1).IsSuccess, Is.True);
@@ -57,7 +57,7 @@ namespace Tower.Tests.EditMode
         [Test]
         public void Mark_ExpiresAfterDuration()
         {
-            var mark = CreateMark("burn", durationTurns: 1, stackable: false);
+            var mark = CreateMark("burn", durationSeconds: 1f, stackable: false);
 
             Assert.That(statusBoard.ApplyMark("unit", mark, 1).IsSuccess, Is.True);
 
@@ -66,15 +66,15 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
-        public void OnRoundAdvanced_PrunesExpiredStatuses()
+        public void PruneExpired_RemovesElapsedStatuses()
         {
-            var mark = CreateMark("burn", durationTurns: 1, stackable: false);
+            var mark = CreateMark("burn", durationSeconds: 1f, stackable: false);
             Assert.That(statusBoard.ApplyMark("unit", mark, 1).IsSuccess, Is.True);
             Assert.That(statusBoard.ApplyAmplify("unit", 2f, 1).IsSuccess, Is.True);
 
-            statusBoard.OnRoundAdvanced(2);
+            statusBoard.PruneExpired(2f);
 
-            Assert.That(statusBoard.HasMark("unit", "burn", 1), Is.False, "Pruned mark should be gone even for older round queries.");
+            Assert.That(statusBoard.HasMark("unit", "burn", 1f), Is.False, "Pruned mark should be gone even for older elapsed-time queries.");
             Assert.That(statusBoard.IsAmplified("unit", 1), Is.False);
         }
 
@@ -88,12 +88,12 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
-        public void Amplify_ExpiresAfterItsRound()
+        public void Amplify_ExpiresAfterItsDurationSeconds()
         {
             Assert.That(statusBoard.ApplyAmplify("unit", 2f, 1).IsSuccess, Is.True);
 
             Assert.That(statusBoard.IsAmplified("unit", 1), Is.True);
-            Assert.That(statusBoard.IsAmplified("unit", 1 + StatusBoard.AmplifyDurationRounds), Is.False);
+            Assert.That(statusBoard.IsAmplified("unit", 1f + StatusBoard.AmplifyDurationSeconds), Is.False);
         }
 
         [Test]
@@ -109,7 +109,7 @@ namespace Tower.Tests.EditMode
         [Test]
         public void ClearUnit_RemovesAllStatuses()
         {
-            var mark = CreateMark("burn", durationTurns: 3, stackable: false);
+            var mark = CreateMark("burn", durationSeconds: 3f, stackable: false);
             Assert.That(statusBoard.ApplyMark("unit", mark, 1).IsSuccess, Is.True);
             Assert.That(statusBoard.ApplyAmplify("unit", 2f, 1).IsSuccess, Is.True);
 
@@ -122,20 +122,20 @@ namespace Tower.Tests.EditMode
         [Test]
         public void ApplyMark_FailsOnInvalidInput()
         {
-            var mark = CreateMark("burn", durationTurns: 2, stackable: false);
+            var mark = CreateMark("burn", durationSeconds: 2f, stackable: false);
 
             Assert.That(statusBoard.ApplyMark(null, mark, 1).IsFailure, Is.True);
             Assert.That(statusBoard.ApplyMark("unit", null, 1).IsFailure, Is.True);
             Assert.That(statusBoard.ApplyAmplify("unit", 0f, 1).IsFailure, Is.True);
         }
 
-        private MarkDef CreateMark(string id, int durationTurns, bool stackable)
+        private MarkDef CreateMark(string id, float durationSeconds, bool stackable)
         {
             var mark = ScriptableObject.CreateInstance<MarkDef>();
             createdObjects.Add(mark);
             SetPrivateField(mark, "id", id);
             SetPrivateField(mark, "displayName", id);
-            SetPrivateField(mark, "durationTurns", durationTurns);
+            SetPrivateField(mark, "durationSeconds", durationSeconds);
             SetPrivateField(mark, "stackable", stackable);
             return mark;
         }

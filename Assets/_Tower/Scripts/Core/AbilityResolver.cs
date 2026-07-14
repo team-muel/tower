@@ -74,7 +74,7 @@ namespace Tower.Core
                 return Result.Failure($"Caster does not have ability '{command.AbilityId}'.");
             }
 
-            if (caster.State.RemainingCooldown(ability.Id) > 0)
+            if (caster.State.RemainingCooldownSeconds(ability.Id) > 0f)
             {
                 return Result.Failure($"Ability '{command.AbilityId}' is on cooldown.");
             }

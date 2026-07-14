@@ -118,7 +118,7 @@ namespace Tower.Core
                     }
 
                     // T18: abilities on cooldown are never candidates.
-                    if (actor.State.RemainingCooldown(ability.Id) > 0)
+                    if (actor.State.RemainingCooldownSeconds(ability.Id) > 0f)
                     {
                         continue;
                     }

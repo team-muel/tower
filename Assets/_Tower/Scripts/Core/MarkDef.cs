@@ -7,12 +7,12 @@ namespace Tower.Core
     {
         [SerializeField] private string id;
         [SerializeField] private string displayName;
-        [SerializeField] private int durationTurns = 1;
+        [SerializeField, Min(0.01f)] private float durationSeconds = 1f;
         [SerializeField] private bool stackable;
 
         public string Id => id;
         public string DisplayName => displayName;
-        public int DurationTurns => durationTurns;
+        public float DurationSeconds => durationSeconds;
         public bool Stackable => stackable;
 
         // Runtime factory mirroring AbilityDef/CharacterDef.CreateRuntime — lets
@@ -20,13 +20,13 @@ namespace Tower.Core
         public static MarkDef CreateRuntime(
             string id,
             string displayName = null,
-            int durationTurns = 1,
+            float durationSeconds = 1f,
             bool stackable = false)
         {
             var mark = CreateInstance<MarkDef>();
             mark.id = id;
             mark.displayName = displayName ?? id;
-            mark.durationTurns = durationTurns;
+            mark.durationSeconds = durationSeconds;
             mark.stackable = stackable;
             return mark;
         }

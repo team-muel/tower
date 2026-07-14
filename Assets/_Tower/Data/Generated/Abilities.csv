@@ -1,4 +1,4 @@
-id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownRounds
+id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownSeconds
 A_FrostBolt,Frost Bolt,Apply,M_Frost,5,1,6,1,Enemy,0
 A_BurningBrand,Burning Brand,Apply,M_Burn,4,1,5,1,Enemy,0
 A_ChillTrap,Chill Trap,Apply,M_Frost,3,2,4,1,Cell,0

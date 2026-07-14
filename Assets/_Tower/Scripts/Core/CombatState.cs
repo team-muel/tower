@@ -113,6 +113,22 @@ namespace Tower.Core
             }
 
             ElapsedSeconds += deltaSeconds;
+            for (int index = 0; index < registrationOrder.Count; index++)
+            {
+                string unitId = registrationOrder[index];
+                CombatantRef combatant = combatants[unitId];
+                Result<CharacterState> advanced = combatant.State.WithCooldownsAdvanced(deltaSeconds);
+                if (advanced.IsFailure)
+                {
+                    return Result.Failure(advanced.Error);
+                }
+
+                if (!ReferenceEquals(advanced.Value, combatant.State))
+                {
+                    combatants[unitId] = combatant.WithState(advanced.Value);
+                }
+            }
+
             StatusBoard.PruneExpired(ElapsedSeconds);
             return Result.Success();
         }
@@ -153,7 +169,7 @@ namespace Tower.Core
 
         public Result RecordCooldown(string unitId, AbilityDef ability)
         {
-            if (ability == null || ability.CooldownRounds <= 0)
+            if (ability == null || ability.CooldownSeconds <= 0f)
             {
                 return Result.Success();
             }
@@ -163,7 +179,7 @@ namespace Tower.Core
                 return Result.Failure("Unknown combatant.");
             }
 
-            var cooled = combatant.State.WithAbilityCooldown(ability.Id, ability.CooldownRounds);
+            var cooled = combatant.State.WithAbilityCooldown(ability.Id, ability.CooldownSeconds);
             if (cooled.IsFailure)
             {
                 return Result.Failure(cooled.Error);
