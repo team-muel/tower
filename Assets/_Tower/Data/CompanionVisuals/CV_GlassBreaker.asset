@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: CV_GlassBreaker
   m_EditorClassIdentifier: Tower.Combat::Tower.Combat.CompanionVisualProfile
   characterDefinition: {fileID: 11400000, guid: 842ad6e72621c344198df099b32f9395, type: 2}
-  bodyPrefab: {fileID: 7057395844601738757, guid: 89d1e97720edf8d41bd452844e572d73, type: 3}
+  bodyPrefab: {fileID: 5246398437243491837, guid: 76539157b17b74b44bef7f3708e75881, type: 3}
+  bodyMaterial: {fileID: 2100000, guid: aa3c464762aff6543aa375af721718d2, type: 2}
   locomotionController: {fileID: 9100000, guid: e3edabcfa4bc1bd4eb50c08190d4a100, type: 2}
   accentColor: {r: 0.72, g: 0.54, b: 0.22, a: 1}
   formationOffset: {x: 0, y: 0, z: -2.55}

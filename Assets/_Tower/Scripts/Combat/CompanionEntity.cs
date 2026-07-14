@@ -144,6 +144,18 @@ namespace Tower.Combat
 
             foreach (var renderer in visualRoot.GetComponentsInChildren<Renderer>(true))
             {
+                if (profile.BodyMaterial != null)
+                {
+                    var materialCount = Mathf.Max(1, renderer.sharedMaterials.Length);
+                    var materials = new Material[materialCount];
+                    for (var index = 0; index < materials.Length; index++)
+                    {
+                        materials[index] = profile.BodyMaterial;
+                    }
+
+                    renderer.sharedMaterials = materials;
+                }
+
                 var properties = new MaterialPropertyBlock();
                 renderer.GetPropertyBlock(properties);
                 properties.SetColor("_BaseColor", profile.AccentColor);
@@ -196,4 +208,3 @@ namespace Tower.Combat
         }
     }
 }
-

@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: CV_EmberVanguard
   m_EditorClassIdentifier: Tower.Combat::Tower.Combat.CompanionVisualProfile
   characterDefinition: {fileID: 11400000, guid: b2b5e89a84c420144bafbb5dd4c60eaf, type: 2}
-  bodyPrefab: {fileID: 5725318072649477174, guid: fa70b5bf51b0c0f4a9bd8fd25693060f, type: 3}
+  bodyPrefab: {fileID: 5246398437243491837, guid: 76539157b17b74b44bef7f3708e75881, type: 3}
+  bodyMaterial: {fileID: 2100000, guid: aa3c464762aff6543aa375af721718d2, type: 2}
   locomotionController: {fileID: 9100000, guid: e3edabcfa4bc1bd4eb50c08190d4a100, type: 2}
   accentColor: {r: 0.82, g: 0.32, b: 0.16, a: 1}
   formationOffset: {x: -1.55, y: 0, z: -1.55}

@@ -8,6 +8,7 @@ namespace Tower.Combat
     {
         [SerializeField] private CharacterDef characterDefinition;
         [SerializeField] private GameObject bodyPrefab;
+        [SerializeField] private Material bodyMaterial;
         [SerializeField] private RuntimeAnimatorController locomotionController;
         [SerializeField] private Color accentColor = Color.white;
         [SerializeField] private Vector3 formationOffset = new Vector3(0f, 0f, -2f);
@@ -17,6 +18,7 @@ namespace Tower.Combat
 
         public CharacterDef CharacterDefinition => characterDefinition;
         public GameObject BodyPrefab => bodyPrefab;
+        public Material BodyMaterial => bodyMaterial;
         public RuntimeAnimatorController LocomotionController => locomotionController;
         public Color AccentColor => accentColor;
         public Vector3 FormationOffset => formationOffset;
@@ -64,11 +66,13 @@ namespace Tower.Combat
             Vector3 formationOffset,
             float arriveDistance = 0.2f,
             float moveSpeed = 3.5f,
-            float turnSpeed = 540f)
+            float turnSpeed = 540f,
+            Material bodyMaterial = null)
         {
             var profile = CreateInstance<CompanionVisualProfile>();
             profile.characterDefinition = characterDefinition;
             profile.bodyPrefab = bodyPrefab;
+            profile.bodyMaterial = bodyMaterial;
             profile.locomotionController = locomotionController;
             profile.accentColor = accentColor;
             profile.formationOffset = formationOffset;
@@ -84,4 +88,3 @@ namespace Tower.Combat
         }
     }
 }
-

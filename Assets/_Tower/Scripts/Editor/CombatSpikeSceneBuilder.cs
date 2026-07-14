@@ -15,7 +15,6 @@ namespace Tower.EditorTools
     public static class CombatSpikeSceneBuilder
     {
         private const string ScenePath = "Assets/_Tower/Scenes/_CombatSpike.unity";
-        private const string HumanPrefabPath = "Assets/Blink/Art/Characters/LowPoly/FREE_HumanLowPoly/Prefabs_Humans/HumanMale_Character_FREE.prefab";
         private const string RuntimeLitMaterialPath = "Assets/_Tower/Resources/TowerRuntimeLit.mat";
         private const string LocomotionControllerPath = "Assets/_Tower/Art/Characters/Animations/PC_Locomotion.controller";
         private const string ReturnerDefinitionPath = "Assets/_Tower/Data/Characters/C_Returner.asset";
@@ -30,7 +29,7 @@ namespace Tower.EditorTools
             VerifyAnimationClip(RunForwardFbxPath, "RunForward");
             VerifyAnimationClip(SprintFbxPath, "Sprint");
 
-            var humanPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(HumanPrefabPath);
+            var humanPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(CompanionEntityAssetBuilder.SharedBodyPrefabPath);
             var locomotionController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(LocomotionControllerPath);
             var runtimeLitMaterial = AssetDatabase.LoadAssetAtPath<Material>(RuntimeLitMaterialPath);
             if (humanPrefab == null || locomotionController == null || runtimeLitMaterial == null)

@@ -1,9 +1,4 @@
 using System;
-using System.Linq;
-using ithappy.Creative_Characters_FREE.CharacterCustomizationTool.Editor;
-using ithappy.Creative_Characters_FREE.CharacterCustomizationTool.Editor.Character;
-using ithappy.Creative_Characters_FREE.CharacterCustomizationTool.Editor.FaceEditor;
-using ithappy.Creative_Characters_FREE.CharacterCustomizationTool.Editor.MaterialManagement;
 using Tower.Combat;
 using Tower.Core;
 using UnityEditor;
@@ -12,19 +7,20 @@ using UnityEngine;
 namespace Tower.EditorTools
 {
     /// <summary>
-    /// Deterministically bakes the three v0 companion silhouettes from the
-    /// adopted ithappy modular humanoid pack. The generated prefabs only own
-    /// presentation; identity remains in CharacterDef and visual profiles.
+    /// Binds the v0 roster to the same Blink source asset used by the playable
+    /// Returner. Each profile still owns identity, accent, and movement tuning,
+    /// so shared asset provenance does not turn the roster into identical data.
     /// </summary>
     public static class CompanionEntityAssetBuilder
     {
         public const string EmberProfilePath = "Assets/_Tower/Data/CompanionVisuals/CV_EmberVanguard.asset";
         public const string WardProfilePath = "Assets/_Tower/Data/CompanionVisuals/CV_WardBearer.asset";
         public const string GlassProfilePath = "Assets/_Tower/Data/CompanionVisuals/CV_GlassBreaker.asset";
+        public const string SharedBodyPrefabPath = "Assets/_Tower/Prefabs/Characters/PlayableHumanoid.prefab";
 
-        private const string PrefabFolder = "Assets/_Tower/Prefabs/Characters";
-        private const string ProfileFolder = "Assets/_Tower/Data/CompanionVisuals";
         private const string ControllerPath = "Assets/_Tower/Art/Characters/Animations/PC_Locomotion.controller";
+        private const string HumanPrefabPath = "Assets/Blink/Art/Characters/LowPoly/FREE_HumanLowPoly/Prefabs_Humans/HumanMale_Character_FREE.prefab";
+        private const string RuntimeLitMaterialPath = "Assets/_Tower/Resources/TowerRuntimeLit.mat";
 
         public static void Create()
         {
@@ -32,79 +28,116 @@ namespace Tower.EditorTools
             EnsureFolder("Assets/_Tower/Data", "CompanionVisuals");
 
             var controller = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(ControllerPath);
-            if (controller == null)
+            var sourcePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(HumanPrefabPath);
+            var bodyMaterial = AssetDatabase.LoadAssetAtPath<Material>(RuntimeLitMaterialPath);
+            if (controller == null || sourcePrefab == null || bodyMaterial == null)
             {
-                throw new InvalidOperationException("Companion locomotion controller is missing.");
+                throw new InvalidOperationException("Shared roster visual source assets are missing.");
             }
 
+            var bodyPrefab = CreateSharedBodyPrefab(sourcePrefab, controller, bodyMaterial);
+
             CreateCompanion(
-                "EmberVanguard",
                 "Assets/_Tower/Data/Characters/C_EmberVanguard.asset",
                 factionId: 1,
                 new Color(0.82f, 0.32f, 0.16f, 1f),
                 new Vector3(-1.55f, 0f, -1.55f),
-                new[]
-                {
-                    new Part(GroupType.Faces, 2),
-                    new Part(GroupType.Outfit, 0),
-                    new Part(GroupType.Pants, 0),
-                    new Part(GroupType.Shoes, 2),
-                    new Part(GroupType.Hairstyle, 1),
-                    new Part(GroupType.Gloves, 1),
-                },
                 EmberProfilePath,
-                controller);
+                controller,
+                bodyPrefab,
+                bodyMaterial);
 
             CreateCompanion(
-                "WardBearer",
                 "Assets/_Tower/Data/Characters/C_WardBearer.asset",
                 factionId: 2,
                 new Color(0.20f, 0.48f, 0.72f, 1f),
                 new Vector3(1.55f, 0f, -1.55f),
-                new[]
-                {
-                    new Part(GroupType.Faces, 0),
-                    new Part(GroupType.Outfit, 0),
-                    new Part(GroupType.Outwear, 1),
-                    new Part(GroupType.Pants, 1),
-                    new Part(GroupType.Shoes, 0),
-                    new Part(GroupType.HairstyleSingle, 0),
-                    new Part(GroupType.Gloves, 0),
-                },
                 WardProfilePath,
-                controller);
+                controller,
+                bodyPrefab,
+                bodyMaterial);
 
             CreateCompanion(
-                "GlassBreaker",
                 "Assets/_Tower/Data/Characters/C_GlassBreaker.asset",
                 factionId: 3,
                 new Color(0.72f, 0.54f, 0.22f, 1f),
                 new Vector3(0f, 0f, -2.55f),
-                new[]
-                {
-                    new Part(GroupType.Faces, 1),
-                    new Part(GroupType.Outfit, 0),
-                    new Part(GroupType.Shorts, 0),
-                    new Part(GroupType.Shoes, 1),
-                    new Part(GroupType.HairstyleSingle, 0),
-                    new Part(GroupType.Glasses, 1),
-                },
                 GlassProfilePath,
-                controller);
+                controller,
+                bodyPrefab,
+                bodyMaterial);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
         }
 
+        private static GameObject CreateSharedBodyPrefab(
+            GameObject sourcePrefab,
+            RuntimeAnimatorController controller,
+            Material bodyMaterial)
+        {
+            var instance = (GameObject)PrefabUtility.InstantiatePrefab(sourcePrefab);
+            instance.name = "PlayableHumanoidVisual";
+            if (PrefabUtility.IsPartOfPrefabInstance(instance))
+            {
+                PrefabUtility.UnpackPrefabInstance(
+                    instance,
+                    PrefabUnpackMode.Completely,
+                    InteractionMode.AutomatedAction);
+            }
+
+            foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+            {
+                var materialCount = ResolveSubMeshCount(renderer);
+                var materials = new Material[materialCount];
+                for (var index = 0; index < materials.Length; index++)
+                {
+                    materials[index] = bodyMaterial;
+                }
+
+                renderer.sharedMaterials = materials;
+            }
+
+            var animator = instance.GetComponentInChildren<Animator>();
+            if (animator == null)
+            {
+                throw new InvalidOperationException("Shared playable source has no Animator.");
+            }
+
+            animator.runtimeAnimatorController = controller;
+            animator.applyRootMotion = false;
+            var prefab = PrefabUtility.SaveAsPrefabAsset(instance, SharedBodyPrefabPath);
+            UnityEngine.Object.DestroyImmediate(instance);
+            if (prefab == null)
+            {
+                throw new InvalidOperationException("Failed to create the normalized shared playable prefab.");
+            }
+
+            return prefab;
+        }
+
+        private static int ResolveSubMeshCount(Renderer renderer)
+        {
+            if (renderer is SkinnedMeshRenderer skinned && skinned.sharedMesh != null)
+            {
+                return Mathf.Max(1, skinned.sharedMesh.subMeshCount);
+            }
+
+            var filter = renderer.GetComponent<MeshFilter>();
+            return filter != null && filter.sharedMesh != null
+                ? Mathf.Max(1, filter.sharedMesh.subMeshCount)
+                : 1;
+        }
+
         private static void CreateCompanion(
-            string name,
             string characterPath,
             int factionId,
             Color accent,
             Vector3 formationOffset,
-            Part[] parts,
             string profilePath,
-            RuntimeAnimatorController controller)
+            RuntimeAnimatorController controller,
+            GameObject bodyPrefab,
+            Material bodyMaterial)
         {
             var characterDefinition = AssetDatabase.LoadAssetAtPath<CharacterDef>(characterPath);
             if (characterDefinition == null)
@@ -113,7 +146,6 @@ namespace Tower.EditorTools
             }
 
             MarkAsPreset(characterDefinition, factionId);
-            var prefab = BakeModularPrefab(name, parts, controller);
             var profile = AssetDatabase.LoadAssetAtPath<CompanionVisualProfile>(profilePath);
             if (profile == null)
             {
@@ -123,7 +155,8 @@ namespace Tower.EditorTools
 
             var serialized = new SerializedObject(profile);
             serialized.FindProperty("characterDefinition").objectReferenceValue = characterDefinition;
-            serialized.FindProperty("bodyPrefab").objectReferenceValue = prefab;
+            serialized.FindProperty("bodyPrefab").objectReferenceValue = bodyPrefab;
+            serialized.FindProperty("bodyMaterial").objectReferenceValue = bodyMaterial;
             serialized.FindProperty("locomotionController").objectReferenceValue = controller;
             serialized.FindProperty("accentColor").colorValue = accent;
             serialized.FindProperty("formationOffset").vector3Value = formationOffset;
@@ -132,56 +165,6 @@ namespace Tower.EditorTools
             serialized.FindProperty("turnSpeed").floatValue = 540f;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(profile);
-        }
-
-        private static GameObject BakeModularPrefab(
-            string name,
-            Part[] parts,
-            RuntimeAnimatorController controller)
-        {
-            var customizable = new CustomizableCharacter(SlotLibraryLoader.LoadSlotLibrary());
-            customizable.ToDefault();
-            foreach (var part in parts)
-            {
-                var count = customizable.GetVariantsCountInGroup(part.Group);
-                if (count <= part.Index)
-                {
-                    throw new InvalidOperationException(
-                        $"ithappy group {part.Group} has {count} variants; requested {part.Index}.");
-                }
-
-                customizable.PickGroup(part.Group, part.Index, true);
-            }
-
-            var instance = customizable.InstantiateCharacter();
-            instance.name = name + "Visual";
-            var materialProvider = new MaterialProvider();
-            foreach (var slot in customizable.Slots.Where(slot => slot.IsEnabled))
-            {
-                foreach (var mesh in slot.Meshes)
-                {
-                    var child = instance.transform.Cast<Transform>()
-                        .First(transform => transform.name.StartsWith(mesh.Item1.ToString(), StringComparison.Ordinal));
-                    var renderer = child.GetComponent<SkinnedMeshRenderer>();
-                    renderer.sharedMesh = mesh.Item2;
-                    renderer.sharedMaterial = materialProvider.MainColor;
-                    renderer.localBounds = renderer.sharedMesh.bounds;
-                }
-            }
-
-            FaceLoader.AddFaces(instance);
-            var animator = instance.GetComponent<Animator>();
-            if (animator == null)
-            {
-                animator = instance.AddComponent<Animator>();
-            }
-
-            animator.runtimeAnimatorController = controller;
-            animator.applyRootMotion = false;
-            var path = $"{PrefabFolder}/{name}.prefab";
-            var prefab = PrefabUtility.SaveAsPrefabAsset(instance, path);
-            UnityEngine.Object.DestroyImmediate(instance);
-            return prefab;
         }
 
         private static void MarkAsPreset(CharacterDef definition, int factionId)
@@ -200,18 +183,6 @@ namespace Tower.EditorTools
             {
                 AssetDatabase.CreateFolder(parent, name);
             }
-        }
-
-        private readonly struct Part
-        {
-            public Part(GroupType group, int index)
-            {
-                Group = group;
-                Index = index;
-            }
-
-            public GroupType Group { get; }
-            public int Index { get; }
         }
     }
 }

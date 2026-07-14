@@ -13,7 +13,8 @@ MonoBehaviour:
   m_Name: CV_WardBearer
   m_EditorClassIdentifier: Tower.Combat::Tower.Combat.CompanionVisualProfile
   characterDefinition: {fileID: 11400000, guid: a3ef459689c0aec42ba29c3898a5b34c, type: 2}
-  bodyPrefab: {fileID: 3852183744273861651, guid: 5916db63d6d08d544b896fc6a2c22ba0, type: 3}
+  bodyPrefab: {fileID: 5246398437243491837, guid: 76539157b17b74b44bef7f3708e75881, type: 3}
+  bodyMaterial: {fileID: 2100000, guid: aa3c464762aff6543aa375af721718d2, type: 2}
   locomotionController: {fileID: 9100000, guid: e3edabcfa4bc1bd4eb50c08190d4a100, type: 2}
   accentColor: {r: 0.2, g: 0.48, b: 0.72, a: 1}
   formationOffset: {x: 1.55, y: 0, z: -1.55}

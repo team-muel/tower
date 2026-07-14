@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using Tower.Combat;
 using Tower.Core;
+using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -132,6 +133,31 @@ namespace Tower.Tests.EditMode
                 new[] { result.Value[0].UnitId, result.Value[1].UnitId, result.Value[2].UnitId },
                 Is.EquivalentTo(new[] { "ember", "ward", "glass" }));
             Assert.That(result.Value[0].VisualRoot, Is.Not.SameAs(result.Value[1].VisualRoot));
+        }
+
+        [Test]
+        public void AuthoredRoster_SharesPlayableSourceAssetButKeepsDistinctProfiles()
+        {
+            const string playablePrefabPath =
+                "Assets/_Tower/Prefabs/Characters/PlayableHumanoid.prefab";
+            var playablePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(playablePrefabPath);
+            var ember = AssetDatabase.LoadAssetAtPath<CompanionVisualProfile>(
+                "Assets/_Tower/Data/CompanionVisuals/CV_EmberVanguard.asset");
+            var ward = AssetDatabase.LoadAssetAtPath<CompanionVisualProfile>(
+                "Assets/_Tower/Data/CompanionVisuals/CV_WardBearer.asset");
+            var glass = AssetDatabase.LoadAssetAtPath<CompanionVisualProfile>(
+                "Assets/_Tower/Data/CompanionVisuals/CV_GlassBreaker.asset");
+
+            Assert.That(playablePrefab, Is.Not.Null);
+            Assert.That(new[] { ember, ward, glass }, Has.None.Null);
+            Assert.That(ember.BodyPrefab, Is.SameAs(playablePrefab));
+            Assert.That(ward.BodyPrefab, Is.SameAs(playablePrefab));
+            Assert.That(glass.BodyPrefab, Is.SameAs(playablePrefab));
+            Assert.That(ember.BodyMaterial, Is.Not.Null);
+            Assert.That(ward.BodyMaterial, Is.SameAs(ember.BodyMaterial));
+            Assert.That(glass.BodyMaterial, Is.SameAs(ember.BodyMaterial));
+            Assert.That(ward.AccentColor, Is.Not.EqualTo(ember.AccentColor));
+            Assert.That(glass.AccentColor, Is.Not.EqualTo(ember.AccentColor));
         }
 
         [Test]
