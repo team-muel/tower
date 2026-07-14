@@ -619,9 +619,21 @@ namespace Tower.Floor
             EnsureHud();
             EnsureCameraReadability();
             TryStartCurrentNodeEncounter();
-            if (QaCommandLine.HasAutoEncounterFlag(Environment.GetCommandLineArgs()))
+            string[] commandLineArgs = Environment.GetCommandLineArgs();
+            if (QaCommandLine.HasAutoEncounterFlag(commandLineArgs))
             {
                 QaEnterScheduledEncounter();
+            }
+
+            if (QaCommandLine.HasAutoRunFlag(commandLineArgs))
+            {
+                QaAutoRunDriver autoRun = gameObject.GetComponent<QaAutoRunDriver>();
+                if (autoRun == null)
+                {
+                    autoRun = gameObject.AddComponent<QaAutoRunDriver>();
+                }
+
+                autoRun.Configure(this);
             }
         }
 

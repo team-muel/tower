@@ -248,5 +248,13 @@ namespace Tower.Tests.EditMode
             Assert.That(QaCommandLine.HasFreshRunFlag(new[] { "game.exe", "-qaAutoEncounter" }), Is.False);
             Assert.That(QaCommandLine.HasFreshRunFlag(null), Is.False);
         }
+
+        [Test]
+        public void QaCommandLine_ParsesAutoRunFlag()
+        {
+            Assert.That(QaCommandLine.HasAutoRunFlag(new[] { "game.exe", "-qaAutoRun" }), Is.True);
+            Assert.That(QaCommandLine.HasAutoRunFlag(new[] { "game.exe", "-qaFreshRun" }), Is.False);
+            Assert.That(QaCommandLine.HasAutoRunFlag(null), Is.False);
+        }
     }
 }
