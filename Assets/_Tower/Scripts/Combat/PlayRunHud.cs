@@ -26,7 +26,10 @@ namespace Tower.Combat
     // counter UI stay owner-frozen and are deliberately absent.
     public static class PlayRunHudComposer
     {
-        public static PlayRunHudModel Compose(RunLifecycle run, CombatantRef player)
+        public static PlayRunHudModel Compose(
+            RunLifecycle run,
+            CombatantRef player,
+            MetaProgress meta = null)
         {
             var model = new PlayRunHudModel();
             if (run != null)
@@ -39,6 +42,13 @@ namespace Tower.Combat
                 model.RewardLine =
                     $"Resource x{run.Rewards.AmountOf(RewardType.Resource)} · "
                     + $"Ability x{run.Rewards.AmountOf(RewardType.Ability)}";
+            }
+
+            if (meta != null)
+            {
+                model.RewardLine = string.IsNullOrEmpty(model.RewardLine)
+                    ? $"Platinum x{meta.Platinum}"
+                    : model.RewardLine + $" · Platinum x{meta.Platinum}";
             }
 
             if (player == null || player.State == null || player.State.Definition == null)

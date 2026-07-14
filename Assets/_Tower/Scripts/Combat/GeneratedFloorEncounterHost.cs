@@ -46,6 +46,11 @@ namespace Tower.Combat
         // T58: the run lifecycle reacts to enemy-team victory (retreat).
         // Kept separate from Configure so existing call sites stay intact.
         public void SetDefeatedHandler(Action<string> handler) => defeated = handler;
+
+        // T61: meta slot unlocks change the player's starting slot count.
+        // Must be set before Configure; zero means "use the definition".
+        private int playerSlotOverride;
+        public void SetPlayerSlotOverride(int slotCount) => playerSlotOverride = slotCount;
         public bool IsResolved { get; private set; }
         public bool IsPlayerDefeated { get; private set; }
         public IReadOnlyList<GameObject> Enemies => enemies;
@@ -336,7 +341,8 @@ namespace Tower.Combat
                 CombatTeam.Player,
                 playerDefinition,
                 player,
-                2.15f);
+                2.15f,
+                playerSlotOverride);
             if (playerAdded.IsFailure) return playerAdded;
 
             for (int index = 0; index < companions.Count; index++)
@@ -394,16 +400,20 @@ namespace Tower.Combat
             CombatTeam team,
             CharacterDef definition,
             Transform body,
-            float healthBarHeight)
+            float healthBarHeight,
+            int slotOverride = 0)
         {
             if (bodies.ContainsKey(unitId))
             {
                 return Result.Failure("Combatant unit ids must be unique.");
             }
 
+            int slotCount = slotOverride > 0
+                ? Mathf.Clamp(slotOverride, definition.DefaultAbilities.Length, AbilityLoadout.MaxSlots)
+                : definition.DefaultAbilities.Length;
             Result<CharacterState> state = CharacterState.Create(
                 definition,
-                slotCount: definition.DefaultAbilities.Length,
+                slotCount: slotCount,
                 assignedAbilities: definition.DefaultAbilities);
             if (state.IsFailure) return Result.Failure(state.Error);
             Result<CombatantRef> combatant = CombatantRef.Create(unitId, team, state.Value);

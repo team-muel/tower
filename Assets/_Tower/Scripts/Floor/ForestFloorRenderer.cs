@@ -91,6 +91,8 @@ namespace Tower.Floor
         private RunLifecycle _run;
         private SaveRepository _runSaveRepository;
         private bool _resetRunInteractionsOnRebuild;
+        private MetaProgress _meta;
+        private MetaProgressRepository _metaRepository;
         private RunEventSlot _scheduledRunEvent;
         private FloorNodeContent _scheduledNodeContent;
         private int _encounterNodeId = -1;
@@ -110,6 +112,7 @@ namespace Tower.Floor
         public Transform PlayerTransform => playerTransform;
         public GeneratedFloorEncounterHost ActiveEncounter => _activeEncounter;
         public RunLifecycle RunLifecycle => _run;
+        public MetaProgress MetaProgress => _meta;
         public IFloorLayoutSource Layout => _layout;
         public RunEventProgress RunEventProgress => _run?.Progress;
         public RunRewardInventory RewardInventory => _run?.Rewards;
@@ -638,7 +641,7 @@ namespace Tower.Floor
                 _hud = gameObject.AddComponent<PlayRunHud>();
             }
 
-            _hud.Configure(() => PlayRunHudComposer.Compose(_run, HudPlayerCombatant()));
+            _hud.Configure(() => PlayRunHudComposer.Compose(_run, HudPlayerCombatant(), _meta));
         }
 
         private CombatantRef HudPlayerCombatant()
@@ -963,6 +966,8 @@ namespace Tower.Floor
             GameObject host = new GameObject($"GeneratedEncounter_{_scheduledRunEvent.EventId}");
             host.transform.SetParent(_root, false);
             _activeEncounter = host.AddComponent<GeneratedFloorEncounterHost>();
+            EnsureMeta();
+            _activeEncounter.SetPlayerSlotOverride(_meta.SlotCountFor(playerDefinition));
             Result configured = _activeEncounter.Configure(
                 playerTransform,
                 _playerMovement,
@@ -1078,6 +1083,17 @@ namespace Tower.Floor
                 Debug.Log(
                     $"[RunLifecycle] Conquered stair-step; {_run.Rewards.ClaimCount} reward claims held.",
                     this);
+                EnsureMeta();
+                Result<int> paid = _meta.RecordConquest(0);
+                if (paid.IsSuccess)
+                {
+                    SaveMeta();
+                    Debug.Log(
+                        $"[MetaProgress] Conquest recorded; platinum={paid.Value} "
+                        + $"conquests={_meta.ConquestCount} shortcut=stairway-0.",
+                        this);
+                }
+
                 return advanced;
             }
 
@@ -1152,6 +1168,56 @@ namespace Tower.Floor
         {
             string path = System.IO.Path.Combine(Application.persistentDataPath, "run-lifecycle.json");
             return SaveRepository.Create(path).Value;
+        }
+
+        // T61: platinum/unlocks live apart from the run save and pierce
+        // retreat, the great regression, and -qaFreshRun.
+        private void EnsureMeta()
+        {
+            if (_meta != null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                string path = System.IO.Path.Combine(Application.persistentDataPath, "meta-progress.json");
+                _metaRepository = MetaProgressRepository.Create(path).Value;
+                if (_metaRepository.HasSave)
+                {
+                    Result<MetaProgressSnapshot> loaded = _metaRepository.Load();
+                    Result<MetaProgress> restored = loaded.IsSuccess
+                        ? MetaProgress.Restore(loaded.Value)
+                        : Result<MetaProgress>.Failure(loaded.Error);
+                    if (restored.IsSuccess)
+                    {
+                        _meta = restored.Value;
+                        Debug.Log(
+                            $"[MetaProgress] Loaded platinum={_meta.Platinum} "
+                            + $"conquests={_meta.ConquestCount}.",
+                            this);
+                        return;
+                    }
+
+                    Debug.LogWarning($"[MetaProgress] Meta save ignored: {restored.Error}", this);
+                }
+            }
+
+            _meta = MetaProgress.Restore(null).Value;
+        }
+
+        private void SaveMeta()
+        {
+            if (!Application.isPlaying || _meta == null || _metaRepository == null)
+            {
+                return;
+            }
+
+            Result written = _metaRepository.Save(_meta.Capture());
+            if (written.IsFailure)
+            {
+                Debug.LogError(written.Error, this);
+            }
         }
 
         private void SaveRun()
