@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using Tower.Combat;
 using Tower.Core;
 using Tower.Floor;
 using Tower.Gen;
@@ -98,11 +99,61 @@ namespace Tower.Tests.EditMode
             }
         }
 
+        [Test]
+        public void EncounterOutcome_CompletesProgressGrantsOnceAndPresentsResult()
+        {
+            GameObject host = new GameObject("forest-encounter-outcome");
+            EncounterRewardProfile rewards = EncounterRewardProfile.CreateRuntime(
+                RewardType.Resource,
+                1,
+                "Run resource",
+                RewardType.Ability,
+                1,
+                "Ability draft");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                SetPrivateField(renderer, "encounterRewardProfile", rewards);
+                renderer.Rebuild();
+                var combatResult = new GeneratedEncounterResult(
+                    renderer.ScheduledRunEvent.EventId,
+                    CombatTeam.Player,
+                    4,
+                    2.8f);
+
+                InvokeOutcome(renderer, combatResult);
+                InvokeOutcome(renderer, combatResult);
+
+                Assert.That(renderer.RunEventProgress.CompletedCount, Is.EqualTo(1));
+                Assert.That(renderer.RewardInventory.ClaimCount, Is.EqualTo(1));
+                Assert.That(renderer.RewardInventory.AmountOf(RewardType.Resource), Is.EqualTo(1));
+                Assert.That(renderer.ResultPresenter, Is.Not.Null);
+                Assert.That(renderer.ResultPresenter.IsVisible, Is.True);
+                Assert.That(renderer.ResultPresenter.Headline, Does.Contain("1/"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                Object.DestroyImmediate(rewards);
+            }
+        }
+
         private static void SetPrivateField<T>(T target, string fieldName, object value)
         {
             FieldInfo field = typeof(T).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(field, Is.Not.Null, fieldName);
             field.SetValue(target, value);
+        }
+
+        private static void InvokeOutcome(
+            ForestFloorRenderer renderer,
+            GeneratedEncounterResult result)
+        {
+            MethodInfo method = typeof(ForestFloorRenderer).GetMethod(
+                "OnEncounterResolved",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            method.Invoke(renderer, new object[] { result });
         }
     }
 }

@@ -30,7 +30,7 @@ namespace Tower.Combat
         private EncounterEngagementController engagement;
         private AnalogBattlefield battlefield;
         private AutonomousCombatDriver driver;
-        private Action<string> resolved;
+        private Action<GeneratedEncounterResult> resolved;
         private Transform player;
         private Behaviour playerMovement;
         private Vector3 arenaCenter;
@@ -57,7 +57,7 @@ namespace Tower.Combat
             FloorEncounter encounter,
             RunEventSlot runEvent,
             Vector3 spawnCenter,
-            Action<string> onResolved,
+            Action<GeneratedEncounterResult> onResolved,
             float triggerRadius = 7f,
             float introHoldSeconds = 0.45f)
         {
@@ -225,7 +225,12 @@ namespace Tower.Combat
 
             IsResolved = true;
             EndCombatPresentation();
-            resolved?.Invoke(eventId);
+            var combatResult = new GeneratedEncounterResult(
+                eventId,
+                CombatState.WinningTeam.Value,
+                Metrics.ActionCount,
+                CombatState.ElapsedSeconds);
+            resolved?.Invoke(combatResult);
             Debug.Log(
                 $"[GeneratedEncounter] Resolved event={eventId}; traversal unlocked; "
                 + $"actions={Metrics.ActionCount} duration={CombatState.ElapsedSeconds:0.0}s.",

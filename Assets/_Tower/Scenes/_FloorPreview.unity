@@ -69206,8 +69206,10 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 28b0ed94218541d38937648d4cc8b468, type: 2}
   - {fileID: 11400000, guid: c31d18cddf074b41a294ddce1125646f, type: 2}
   - {fileID: 11400000, guid: 02f8e138815947f28a792a6d7c9b4cda, type: 2}
+  encounterRewardProfile: {fileID: 11400000, guid: b6dd6080da0f4e84a47c4763fd513ceb, type: 2}
   encounterTriggerRadius: 7
   encounterIntroHoldSeconds: 0.45
+  encounterResultSeconds: 3
 --- !u!4 &2045465629
 Transform:
   m_ObjectHideFlags: 0

@@ -16,6 +16,7 @@ namespace Tower.Tests.EditMode
             Assert.That(LoadAssets<PassiveDef>("Assets/_Tower/Data/Passives"), Has.Length.EqualTo(3));
             Assert.That(LoadAssets<CharacterDef>("Assets/_Tower/Data/Characters"), Has.Length.EqualTo(6));
             Assert.That(LoadAssets<EnemyCombatProfile>("Assets/_Tower/Data/EnemyCombatProfiles"), Has.Length.EqualTo(4));
+            Assert.That(LoadAssets<EncounterRewardProfile>("Assets/_Tower/Data/EncounterRewards"), Has.Length.EqualTo(1));
         }
 
         [Test]
@@ -93,6 +94,19 @@ namespace Tower.Tests.EditMode
             Assert.That(profiles.Select(profile => profile.KindSlot),
                 Is.EquivalentTo(new[] { "melee", "ranged", "elite", "boss" }));
             Assert.That(profiles, Has.All.Matches<EnemyCombatProfile>(profile => profile.Validate().IsSuccess));
+        }
+
+        [Test]
+        public void EncounterRewardProfile_HasValidDataAuthoredEntries()
+        {
+            EncounterRewardProfile profile =
+                LoadAssets<EncounterRewardProfile>("Assets/_Tower/Data/EncounterRewards").Single();
+
+            Assert.That(profile.Validate().IsSuccess, Is.True);
+            Assert.That(profile.EncounterType, Is.EqualTo(RewardType.Resource));
+            Assert.That(profile.EncounterAmount, Is.EqualTo(1));
+            Assert.That(profile.BossType, Is.EqualTo(RewardType.Ability));
+            Assert.That(profile.BossAmount, Is.EqualTo(1));
         }
 
         private static T[] LoadAssets<T>(string folder) where T : UnityEngine.Object

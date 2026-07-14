@@ -59,6 +59,7 @@ namespace Tower.Tests.EditMode
                 "boss");
             RunEventSlot runEvent = RunEventPlan.Create(77).Slots[0];
             bool unlocked = false;
+            GeneratedEncounterResult outcome = null;
             var host = root.AddComponent<GeneratedFloorEncounterHost>();
 
             Result configured = host.Configure(
@@ -70,7 +71,11 @@ namespace Tower.Tests.EditMode
                 encounter,
                 runEvent,
                 Vector3.forward,
-                _ => unlocked = true,
+                result =>
+                {
+                    outcome = result;
+                    unlocked = true;
+                },
                 7f,
                 0.45f);
 
@@ -95,6 +100,11 @@ namespace Tower.Tests.EditMode
             Assert.That(host.CombatState.WinningTeam, Is.EqualTo(CombatTeam.Player));
             Assert.That(host.Metrics.ActionCount, Is.GreaterThan(0));
             Assert.That(unlocked, Is.True);
+            Assert.That(outcome, Is.Not.Null);
+            Assert.That(outcome.EventId, Is.EqualTo(runEvent.EventId));
+            Assert.That(outcome.WinningTeam, Is.EqualTo(CombatTeam.Player));
+            Assert.That(outcome.ActionCount, Is.EqualTo(host.Metrics.ActionCount));
+            Assert.That(outcome.DurationSeconds, Is.EqualTo(host.CombatState.ElapsedSeconds));
             Assert.That(host.EnemyCount, Is.Zero);
         }
 

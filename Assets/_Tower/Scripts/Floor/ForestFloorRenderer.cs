@@ -70,8 +70,10 @@ namespace Tower.Floor
         [SerializeField] private CharacterDef playerDefinition;
         [SerializeField] private CompanionVisualProfile[] companionProfiles;
         [SerializeField] private EnemyCombatProfile[] enemyCombatProfiles;
+        [SerializeField] private EncounterRewardProfile encounterRewardProfile;
         [SerializeField, Min(0.01f)] private float encounterTriggerRadius = 7f;
         [SerializeField, Min(0.01f)] private float encounterIntroHoldSeconds = 0.45f;
+        [SerializeField, Min(0.1f)] private float encounterResultSeconds = 3f;
 
         private FloorGraph _graph;
         private IFloorLayoutSource _layout;
@@ -94,6 +96,8 @@ namespace Tower.Floor
         private ForestPlayerController _playerMovement;
         private CompanionPartySpawner _partySpawner;
         private IReadOnlyList<CompanionEntity> _companions = Array.Empty<CompanionEntity>();
+        private readonly RunRewardInventory _rewardInventory = new RunRewardInventory();
+        private EncounterResultPresenter _resultPresenter;
 
         public FloorGraph Graph => _graph;
         public FloorExploration Exploration => _exploration;
@@ -104,6 +108,9 @@ namespace Tower.Floor
         public Transform CameraTransform => cameraTransform;
         public Transform PlayerTransform => playerTransform;
         public GeneratedFloorEncounterHost ActiveEncounter => _activeEncounter;
+        public RunEventProgress RunEventProgress => _runEventProgress;
+        public RunRewardInventory RewardInventory => _rewardInventory;
+        public EncounterResultPresenter ResultPresenter => _resultPresenter;
 
         // Allows the orchestrator's Core->interface adapter to inject a real layout.
         public void SetLayoutSource(IFloorLayoutSource source) => _layout = source;
@@ -854,6 +861,19 @@ namespace Tower.Floor
                 return;
             }
 
+            if (encounterRewardProfile == null)
+            {
+                Debug.LogError("Generated encounter requires an encounter reward profile.", this);
+                return;
+            }
+
+            Result rewardProfileValid = encounterRewardProfile.Validate();
+            if (rewardProfileValid.IsFailure)
+            {
+                Debug.LogError(rewardProfileValid.Error, this);
+                return;
+            }
+
             FloorFieldRect field = _layout.GetField(CurrentNodeId);
             Vector3 center = field.Center;
             Vector3 spawnCenter = new Vector3(center.x, GroundY(CurrentNodeId, center.x, center.z), center.z);
@@ -880,17 +900,59 @@ namespace Tower.Floor
             }
         }
 
-        private void OnEncounterResolved(string eventId)
+        private void OnEncounterResolved(GeneratedEncounterResult combatResult)
         {
-            Result<RunEventProgress> completed = _runEventProgress.CompleteNext(eventId);
-            if (completed.IsSuccess)
+            if (combatResult == null)
             {
-                _runEventProgress = completed.Value;
+                Debug.LogError("Generated encounter returned no combat result.", this);
+                return;
             }
-            else
+
+            Result<RunEventProgress> completed = _runEventProgress.CompleteNext(combatResult.EventId);
+            if (completed.IsFailure)
             {
                 Debug.LogError(completed.Error, this);
+                return;
             }
+
+            _runEventProgress = completed.Value;
+            Result<EncounterReward> reward = encounterRewardProfile.CreateReward(_scheduledRunEvent);
+            if (reward.IsFailure)
+            {
+                Debug.LogError(reward.Error, this);
+                return;
+            }
+
+            Result<bool> granted = _rewardInventory.Grant(reward.Value);
+            if (granted.IsFailure)
+            {
+                Debug.LogError(granted.Error, this);
+                return;
+            }
+
+            if (_resultPresenter == null)
+            {
+                _resultPresenter = gameObject.AddComponent<EncounterResultPresenter>();
+            }
+
+            Result presented = _resultPresenter.Present(
+                combatResult,
+                reward.Value,
+                _runEventProgress.CompletedCount,
+                _runEventProgress.Plan.Slots.Count,
+                encounterResultSeconds);
+            if (presented.IsFailure)
+            {
+                Debug.LogError(presented.Error, this);
+                return;
+            }
+
+            Debug.Log(
+                $"[EncounterOutcome] event={combatResult.EventId} "
+                + $"progress={_runEventProgress.CompletedCount}/{_runEventProgress.Plan.Slots.Count} "
+                + $"reward={reward.Value.Type}+{reward.Value.Amount} newlyGranted={granted.Value} "
+                + $"actions={combatResult.ActionCount} duration={combatResult.DurationSeconds:0.0}s.",
+                this);
         }
 
         private IEnumerator WalkTo(Vector3 target)
