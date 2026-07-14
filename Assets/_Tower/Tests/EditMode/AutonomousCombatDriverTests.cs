@@ -131,6 +131,26 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void Step_ExternallyPositionedUnitDoesNotAutoMoveButCanAttackInRange()
+        {
+            var fixture = CreateFixture(
+                playerHp: 20,
+                enemyHp: 20,
+                playerPosition: new BattlePos(2f, 4f),
+                enemyPosition: new BattlePos(10f, 4f),
+                externallyPositionedUnitIds: new[] { "player" });
+
+            Assert.That(fixture.Driver.Step().IsSuccess, Is.True);
+            Assert.That(fixture.Battlefield.FindOccupant("player"), Is.EqualTo(new BattlePos(2f, 4f)));
+            Assert.That(fixture.State.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(20));
+
+            Assert.That(fixture.Battlefield.TryMoveOccupant("player", new BattlePos(7f, 4f)), Is.True);
+            Assert.That(fixture.Driver.Step().IsSuccess, Is.True);
+            Assert.That(fixture.Battlefield.FindOccupant("player"), Is.EqualTo(new BattlePos(7f, 4f)));
+            Assert.That(fixture.State.GetCombatant("enemy").State.CurrentHp, Is.LessThan(20));
+        }
+
+        [Test]
         public void Create_RejectsNonPositiveFixedTickConfiguration()
         {
             var fixture = CreateFixture(playerHp: 20, enemyHp: 20, playerPosition: new BattlePos(2f, 4f), enemyPosition: new BattlePos(10f, 4f));
@@ -154,7 +174,8 @@ namespace Tower.Tests.EditMode
             BattlePos enemyPosition,
             int playerSpeed = 10,
             int enemySpeed = 10,
-            float tickSeconds = 1f)
+            float tickSeconds = 1f,
+            IEnumerable<string> externallyPositionedUnitIds = null)
         {
             var battlefield = new AnalogBattlefield(14f, 8f);
             var statusBoard = new StatusBoard();
@@ -178,7 +199,8 @@ namespace Tower.Tests.EditMode
                 scorer.Value,
                 resolver.Value,
                 tickSeconds: tickSeconds,
-                movementUnitsPerSecond: 2f);
+                movementUnitsPerSecond: 2f,
+                externallyPositionedUnitIds: externallyPositionedUnitIds);
             Assert.That(driver.IsSuccess, Is.True, driver.Error);
 
             return new Fixture(state.Value, battlefield, scorer.Value, resolver.Value, metrics, driver.Value);

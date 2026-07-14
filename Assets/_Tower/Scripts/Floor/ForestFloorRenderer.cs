@@ -67,6 +67,9 @@ namespace Tower.Floor
         [SerializeField] private GameObject playerPrefab;
 
         [Header("Generated encounter entry")]
+        [SerializeField] private CharacterDef playerDefinition;
+        [SerializeField] private CompanionVisualProfile[] companionProfiles;
+        [SerializeField] private EnemyCombatProfile[] enemyCombatProfiles;
         [SerializeField, Min(0.01f)] private float encounterTriggerRadius = 7f;
         [SerializeField, Min(0.01f)] private float encounterIntroHoldSeconds = 0.45f;
 
@@ -89,6 +92,8 @@ namespace Tower.Floor
         private int _encounterNodeId = -1;
         private GeneratedFloorEncounterHost _activeEncounter;
         private ForestPlayerController _playerMovement;
+        private CompanionPartySpawner _partySpawner;
+        private IReadOnlyList<CompanionEntity> _companions = Array.Empty<CompanionEntity>();
 
         public FloorGraph Graph => _graph;
         public FloorExploration Exploration => _exploration;
@@ -98,6 +103,7 @@ namespace Tower.Floor
         public bool IsEncounterBlocking => _activeEncounter != null && !_activeEncounter.IsResolved;
         public Transform CameraTransform => cameraTransform;
         public Transform PlayerTransform => playerTransform;
+        public GeneratedFloorEncounterHost ActiveEncounter => _activeEncounter;
 
         // Allows the orchestrator's Core->interface adapter to inject a real layout.
         public void SetLayoutSource(IFloorLayoutSource source) => _layout = source;
@@ -566,6 +572,7 @@ namespace Tower.Floor
         {
             CurrentNodeId = _graph.EntranceNodeId;
             EnsurePlayer();
+            EnsureParty();
             EnsureInteractionController();
             FloorFieldRect entry = _layout.GetField(CurrentNodeId);
             if (playerTransform != null)
@@ -576,6 +583,43 @@ namespace Tower.Floor
 
             _exploration.MarkVisited(CurrentNodeId);
             TryStartCurrentNodeEncounter();
+            if (QaCommandLine.HasAutoEncounterFlag(Environment.GetCommandLineArgs()))
+            {
+                QaEnterScheduledEncounter();
+            }
+        }
+
+        public bool QaEnterScheduledEncounter()
+        {
+            if (_layout == null || _encounterNodeId < 0 || playerTransform == null)
+            {
+                return false;
+            }
+
+            CurrentNodeId = _encounterNodeId;
+            _exploration.MarkVisited(CurrentNodeId);
+            FloorFieldRect field = _layout.GetField(CurrentNodeId);
+            Vector3 center = field.Center;
+            playerTransform.position = new Vector3(
+                center.x,
+                GroundY(CurrentNodeId, center.x, center.z) + 1f,
+                center.z - Mathf.Min(3f, field.TravelLength * 0.25f));
+            for (int index = 0; index < _companions.Count; index++)
+            {
+                float lateral = (index - ((_companions.Count - 1) * 0.5f)) * 1.4f;
+                Vector3 companionPosition = new Vector3(
+                    center.x + lateral,
+                    0f,
+                    playerTransform.position.z - 1.5f);
+                companionPosition.y = GroundY(
+                    CurrentNodeId,
+                    companionPosition.x,
+                    companionPosition.z) + 1f;
+                _companions[index].transform.position = companionPosition;
+            }
+            Debug.Log($"[FloorQA] Auto-entered encounter node={CurrentNodeId}.", this);
+            TryStartCurrentNodeEncounter();
+            return _activeEncounter != null;
         }
 
         private void EnsurePlayer()
@@ -628,6 +672,59 @@ namespace Tower.Floor
             }
 
             _playerMovement.Configure(cameraTransform);
+            EnsurePlayerVisual();
+        }
+
+        private void EnsurePlayerVisual()
+        {
+            if (playerTransform == null || playerPrefab == null
+                || playerTransform.Find("SharedPlayerVisual") != null)
+            {
+                return;
+            }
+
+            foreach (Renderer renderer in playerTransform.GetComponents<Renderer>())
+            {
+                renderer.enabled = false;
+            }
+
+            GameObject visual = Instantiate(playerPrefab, playerTransform);
+            visual.name = "SharedPlayerVisual";
+            visual.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+            foreach (Rigidbody body in visual.GetComponentsInChildren<Rigidbody>(true))
+            {
+                body.isKinematic = true;
+                body.useGravity = false;
+            }
+        }
+
+        private void EnsureParty()
+        {
+            if (_companions != null && _companions.Count > 0)
+            {
+                return;
+            }
+
+            if (playerTransform == null || companionProfiles == null || companionProfiles.Length == 0)
+            {
+                return;
+            }
+
+            _partySpawner = GetComponent<CompanionPartySpawner>();
+            if (_partySpawner == null)
+            {
+                _partySpawner = gameObject.AddComponent<CompanionPartySpawner>();
+            }
+
+            _partySpawner.Configure(playerTransform, companionProfiles, Array.Empty<Transform>());
+            Result<IReadOnlyList<CompanionEntity>> spawned = _partySpawner.SpawnNow();
+            if (spawned.IsFailure)
+            {
+                Debug.LogError(spawned.Error, this);
+                return;
+            }
+
+            _companions = spawned.Value;
         }
 
         // True when the collider belongs to the traversal player (physics path).
@@ -766,6 +863,9 @@ namespace Tower.Floor
             Result configured = _activeEncounter.Configure(
                 playerTransform,
                 _playerMovement,
+                playerDefinition,
+                _companions,
+                enemyCombatProfiles,
                 _scheduledNodeContent.Encounter,
                 _scheduledRunEvent,
                 spawnCenter,

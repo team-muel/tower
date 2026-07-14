@@ -108,6 +108,22 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void UntaggedEnemyAbility_DealsBasicDamage()
+        {
+            var strike = Ability("basic-strike", AbilityTag.None, power: 4, range: 2);
+            var caster = Unit("caster", CombatTeam.Player, attack: 3, abilities: new[] { strike });
+            var enemy = Unit("enemy", CombatTeam.Enemy, defense: 2);
+            Place("caster", 1f, 1f);
+            Place("enemy", 2f, 1f);
+            var state = State(caster, enemy);
+
+            Result result = resolver.Execute(state, new UseAbilityCommand("caster", "basic-strike", "enemy"));
+
+            Assert.That(result.IsSuccess, Is.True, result.Error);
+            Assert.That(state.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(15));
+        }
+
+        [Test]
         public void Execute_FailsWhenAbilityIsOnCooldown()
         {
             var strike = Ability("strike", AbilityTag.Apply, power: 3, range: 2, cooldown: 2);

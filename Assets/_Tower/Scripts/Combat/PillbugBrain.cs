@@ -76,10 +76,12 @@ namespace Tower.Combat
         private bool didFlashContact;
         private float flashEndsAt;
         private bool engagementEnabled = true;
+        private bool motionEnabled = true;
 
         public TelegraphState Telegraph => telegraph;
         public CounterCoverageResult CoverageResult { get; private set; } = CounterCoverageResult.Missed;
         public bool EngagementEnabled => engagementEnabled;
+        public bool MotionEnabled => motionEnabled;
 
         public void Configure(Transform player, Transform companion, PillbugTuning tuning)
         {
@@ -125,6 +127,11 @@ namespace Tower.Combat
             {
                 windupRing.enabled = false;
             }
+        }
+
+        public void SetMotionEnabled(bool value)
+        {
+            motionEnabled = value;
         }
 
         private void Update()
@@ -177,7 +184,9 @@ namespace Tower.Combat
                 return;
             }
 
-            dashDestination = dashOrigin + (toTarget.normalized * Mathf.Min(tuning.DashRange, toTarget.magnitude));
+            dashDestination = motionEnabled
+                ? dashOrigin + (toTarget.normalized * Mathf.Min(tuning.DashRange, toTarget.magnitude))
+                : dashOrigin;
             transform.rotation = Quaternion.LookRotation(toTarget.normalized, Vector3.up);
         }
 

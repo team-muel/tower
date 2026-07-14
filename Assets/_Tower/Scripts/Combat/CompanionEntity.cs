@@ -66,6 +66,20 @@ namespace Tower.Combat
                 : leader.TransformPoint(profile.FormationOffset);
         }
 
+        public void SetEnemyTargets(Transform[] enemyTransforms)
+        {
+            enemies = enemyTransforms ?? new Transform[0];
+        }
+
+        public void SetCombatDriven(bool value)
+        {
+            enabled = !value;
+            if (animatorSupportsSpeed && value)
+            {
+                animator.SetFloat(SpeedHash, 0f);
+            }
+        }
+
         public void Tick(float deltaTime)
         {
             if (profile == null || leader == null || deltaTime < 0f

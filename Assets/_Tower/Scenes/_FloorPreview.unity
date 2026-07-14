@@ -69195,7 +69195,19 @@ MonoBehaviour:
   exitMarkerPrefab: {fileID: 2614127766383142440, guid: 860215c1b9e97ad4897c69106a96910f, type: 3}
   bossMarkerPrefab: {fileID: 4703443077498385294, guid: 2ce6b1448737f14458cc70ad3a2d6ed7, type: 3}
   eventMarkerPrefab: {fileID: 2303432731756146236, guid: 028c47dee4c908740bcf7675e45b6fe2, type: 3}
-  playerPrefab: {fileID: 0}
+  playerPrefab: {fileID: 5246398437243491837, guid: 76539157b17b74b44bef7f3708e75881, type: 3}
+  playerDefinition: {fileID: 11400000, guid: 11add7f1f45894c4b8417f7573ffa00f, type: 2}
+  companionProfiles:
+  - {fileID: 11400000, guid: 096647ebe65438144bf5c65333ae56c9, type: 2}
+  - {fileID: 11400000, guid: da00dc9eebae2bf42bd4454f3911ec21, type: 2}
+  - {fileID: 11400000, guid: ff1acc38b266dfd4a94f10dbad80ab7f, type: 2}
+  enemyCombatProfiles:
+  - {fileID: 11400000, guid: 974395cbc85549588e79104324e1f9ef, type: 2}
+  - {fileID: 11400000, guid: 28b0ed94218541d38937648d4cc8b468, type: 2}
+  - {fileID: 11400000, guid: c31d18cddf074b41a294ddce1125646f, type: 2}
+  - {fileID: 11400000, guid: 02f8e138815947f28a792a6d7c9b4cda, type: 2}
+  encounterTriggerRadius: 7
+  encounterIntroHoldSeconds: 0.45
 --- !u!4 &2045465629
 Transform:
   m_ObjectHideFlags: 0

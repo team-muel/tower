@@ -18,6 +18,7 @@ namespace Tower.Core
         private readonly float tickSeconds;
         private readonly float movementUnitsPerSecond;
         private readonly Dictionary<string, float> nextActionAtSeconds;
+        private readonly HashSet<string> externallyPositionedUnitIds;
 
         private AutonomousCombatDriver(
             CombatState state,
@@ -25,7 +26,8 @@ namespace Tower.Core
             ActionScorer scorer,
             IAbilityExecutor abilityExecutor,
             float tickSeconds,
-            float movementUnitsPerSecond)
+            float movementUnitsPerSecond,
+            IEnumerable<string> externallyPositionedUnitIds)
         {
             this.state = state;
             this.battlefield = battlefield;
@@ -33,6 +35,9 @@ namespace Tower.Core
             this.abilityExecutor = abilityExecutor;
             this.tickSeconds = tickSeconds;
             this.movementUnitsPerSecond = movementUnitsPerSecond;
+            this.externallyPositionedUnitIds = externallyPositionedUnitIds == null
+                ? new HashSet<string>(StringComparer.Ordinal)
+                : new HashSet<string>(externallyPositionedUnitIds, StringComparer.Ordinal);
             nextActionAtSeconds = new Dictionary<string, float>(StringComparer.Ordinal);
             foreach (string unitId in state.LivingUnitIds)
             {
@@ -65,7 +70,8 @@ namespace Tower.Core
             ActionScorer scorer,
             IAbilityExecutor abilityExecutor,
             float tickSeconds,
-            float movementUnitsPerSecond)
+            float movementUnitsPerSecond,
+            IEnumerable<string> externallyPositionedUnitIds = null)
         {
             if (state == null)
             {
@@ -97,8 +103,27 @@ namespace Tower.Core
                 return Result<AutonomousCombatDriver>.Failure("Movement units per second must be finite and greater than zero.");
             }
 
+            if (externallyPositionedUnitIds != null)
+            {
+                foreach (string unitId in externallyPositionedUnitIds)
+                {
+                    if (string.IsNullOrWhiteSpace(unitId) || state.GetCombatant(unitId) == null)
+                    {
+                        return Result<AutonomousCombatDriver>.Failure(
+                            "Externally positioned unit ids must identify combatants.");
+                    }
+                }
+            }
+
             return Result<AutonomousCombatDriver>.Success(
-                new AutonomousCombatDriver(state, battlefield, scorer, abilityExecutor, tickSeconds, movementUnitsPerSecond));
+                new AutonomousCombatDriver(
+                    state,
+                    battlefield,
+                    scorer,
+                    abilityExecutor,
+                    tickSeconds,
+                    movementUnitsPerSecond,
+                    externallyPositionedUnitIds));
         }
 
         // Performs exactly one externally configured simulation tick. Keeping
@@ -153,7 +178,9 @@ namespace Tower.Core
 
         private Result<AutonomousCombatEvent> ExecutePlan(string unitId)
         {
-            var planResult = scorer.ChooseAction(state, unitId);
+            var planResult = externallyPositionedUnitIds.Contains(unitId)
+                ? scorer.ChooseActionWithoutMovement(state, unitId)
+                : scorer.ChooseAction(state, unitId);
             if (planResult.IsFailure)
             {
                 return Result<AutonomousCombatEvent>.Failure(planResult.Error);
@@ -167,7 +194,7 @@ namespace Tower.Core
 
             var plan = planResult.Value;
             var to = from.Value;
-            if (plan.MoveDistance > Epsilon)
+            if (plan.MoveDistance > Epsilon && !externallyPositionedUnitIds.Contains(unitId))
             {
                 var movementBudget = movementUnitsPerSecond * tickSeconds;
                 to = battlefield.ClampMove(unitId, from.Value, plan.MovePosition, movementBudget);

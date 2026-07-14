@@ -8,6 +8,7 @@ namespace Tower.Core
     {
         public const string QaPortArg = "-qaPort";
         public const string DevCameraArg = "-devcam";
+        public const string AutoEncounterArg = "-qaAutoEncounter";
         public const int MinPort = 1;
         public const int MaxPort = 65535;
 
@@ -43,6 +44,11 @@ namespace Tower.Core
         public static bool HasDevCameraFlag(string[] args)
         {
             return HasFlag(args, DevCameraArg);
+        }
+
+        public static bool HasAutoEncounterFlag(string[] args)
+        {
+            return HasFlag(args, AutoEncounterArg);
         }
 
         public static bool HasFlag(string[] args, string flag)
