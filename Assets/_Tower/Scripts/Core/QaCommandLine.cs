@@ -9,6 +9,7 @@ namespace Tower.Core
         public const string QaPortArg = "-qaPort";
         public const string DevCameraArg = "-devcam";
         public const string AutoEncounterArg = "-qaAutoEncounter";
+        public const string FreshRunArg = "-qaFreshRun";
         public const int MinPort = 1;
         public const int MaxPort = 65535;
 
@@ -49,6 +50,12 @@ namespace Tower.Core
         public static bool HasAutoEncounterFlag(string[] args)
         {
             return HasFlag(args, AutoEncounterArg);
+        }
+
+        // QA-only: ignore and delete any persisted run save before starting.
+        public static bool HasFreshRunFlag(string[] args)
+        {
+            return HasFlag(args, FreshRunArg);
         }
 
         public static bool HasFlag(string[] args, string flag)

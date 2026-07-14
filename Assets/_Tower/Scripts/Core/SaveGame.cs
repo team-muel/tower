@@ -7,7 +7,7 @@ namespace Tower.Core
     // resolved on load, so the file stays plain data.
     //
     // T12 adds hiddenMissingIds. T43 adds anchorStates. T53 adds optional
-    // runEventProgress. The version stays 1:
+    // runEventProgress. T58 adds optional runLifecycle. The version stays 1:
     // older saves simply deserialize with an empty array, which is the correct
     // default (no hidden-missing presets or interaction state recorded yet).
     [Serializable]
@@ -30,6 +30,7 @@ namespace Tower.Core
         public int[] shortcutStairways = new int[0];
         public AnchorRuntimeSnapshot[] anchorStates = new AnchorRuntimeSnapshot[0];
         public RunEventProgressSnapshot runEventProgress;
+        public RunLifecycleSnapshot runLifecycle;
     }
 
     [Serializable]

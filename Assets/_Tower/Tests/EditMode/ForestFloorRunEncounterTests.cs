@@ -138,6 +138,104 @@ namespace Tower.Tests.EditMode
             }
         }
 
+        [Test]
+        public void RunLifecycle_AdvancesThroughEveryEventFloorToConquest()
+        {
+            GameObject host = new GameObject("forest-run-conquest");
+            EncounterRewardProfile rewards = EncounterRewardProfile.CreateRuntime(
+                RewardType.Resource,
+                1,
+                "Run resource",
+                RewardType.Ability,
+                1,
+                "Ability draft");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                SetPrivateField(renderer, "encounterRewardProfile", rewards);
+                renderer.Rebuild();
+
+                int totalEvents = renderer.RunLifecycle.Progress.Plan.Slots.Count;
+                for (int index = 0; index < totalEvents; index++)
+                {
+                    RunEventSlot scheduled = renderer.ScheduledRunEvent;
+                    Assert.That(scheduled, Is.Not.Null, $"missing scheduled event at index {index}");
+                    Assert.That(renderer.RunLifecycle.FloorNumber, Is.EqualTo(scheduled.FloorNumber));
+                    InvokeOutcome(renderer, new GeneratedEncounterResult(
+                        scheduled.EventId, CombatTeam.Player, 3, 2.0f));
+
+                    Result<RunOutcome> advanced = renderer.AdvanceRunFloor();
+                    Assert.That(advanced.IsSuccess, Is.True,
+                        advanced.IsFailure ? advanced.Error : string.Empty);
+                    Assert.That(advanced.Value, Is.EqualTo(index == totalEvents - 1
+                        ? RunOutcome.Conquered
+                        : RunOutcome.FloorAdvanced));
+                }
+
+                Assert.That(renderer.RunLifecycle.IsConquered, Is.True);
+                Assert.That(renderer.RewardInventory.ClaimCount, Is.EqualTo(totalEvents));
+                Assert.That(renderer.RewardInventory.AmountOf(RewardType.Ability), Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                Object.DestroyImmediate(rewards);
+            }
+        }
+
+        [Test]
+        public void RunLifecycle_DefeatRetreatsAndThirdDefeatRegresses()
+        {
+            GameObject host = new GameObject("forest-run-defeat");
+            EncounterRewardProfile rewards = EncounterRewardProfile.CreateRuntime(
+                RewardType.Resource,
+                1,
+                "Run resource",
+                RewardType.Ability,
+                1,
+                "Ability draft");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                SetPrivateField(renderer, "encounterRewardProfile", rewards);
+                renderer.Rebuild();
+
+                RunEventSlot first = renderer.ScheduledRunEvent;
+                InvokeOutcome(renderer, new GeneratedEncounterResult(
+                    first.EventId, CombatTeam.Player, 3, 2.0f));
+                Assert.That(renderer.RunEventProgress.CompletedCount, Is.EqualTo(1));
+
+                InvokeDefeat(renderer, first.EventId);
+                Assert.That(renderer.RunLifecycle.RetreatCount, Is.EqualTo(1));
+                Assert.That(renderer.RunEventProgress.CompletedCount, Is.Zero);
+                Assert.That(renderer.RewardInventory.ClaimCount, Is.Zero);
+                Assert.That(renderer.ScheduledRunEvent, Is.Not.Null);
+                Assert.That(renderer.ScheduledRunEvent.EventId, Is.EqualTo(first.EventId));
+                Assert.That(renderer.RunLifecycle.FloorNumber, Is.EqualTo(first.FloorNumber));
+
+                InvokeDefeat(renderer, first.EventId);
+                Assert.That(renderer.RunLifecycle.RetreatCount, Is.EqualTo(2));
+
+                InvokeDefeat(renderer, first.EventId);
+                Assert.That(renderer.RunLifecycle.RetreatCount, Is.Zero,
+                    "third retreat is the great regression and resets the count");
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                Object.DestroyImmediate(rewards);
+            }
+        }
+
+        private static void InvokeDefeat(ForestFloorRenderer renderer, string eventId)
+        {
+            MethodInfo method = typeof(ForestFloorRenderer).GetMethod(
+                "OnEncounterDefeated",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            method.Invoke(renderer, new object[] { eventId });
+        }
+
         private static void SetPrivateField<T>(T target, string fieldName, object value)
         {
             FieldInfo field = typeof(T).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);

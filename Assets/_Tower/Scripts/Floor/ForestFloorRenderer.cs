@@ -88,7 +88,9 @@ namespace Tower.Floor
         private Material _terrainMat;
         private bool _busy;
         private FloorGenParams _generationParameters;
-        private RunEventProgress _runEventProgress;
+        private RunLifecycle _run;
+        private SaveRepository _runSaveRepository;
+        private bool _resetRunInteractionsOnRebuild;
         private RunEventSlot _scheduledRunEvent;
         private FloorNodeContent _scheduledNodeContent;
         private int _encounterNodeId = -1;
@@ -96,7 +98,6 @@ namespace Tower.Floor
         private ForestPlayerController _playerMovement;
         private CompanionPartySpawner _partySpawner;
         private IReadOnlyList<CompanionEntity> _companions = Array.Empty<CompanionEntity>();
-        private readonly RunRewardInventory _rewardInventory = new RunRewardInventory();
         private EncounterResultPresenter _resultPresenter;
 
         public FloorGraph Graph => _graph;
@@ -108,8 +109,9 @@ namespace Tower.Floor
         public Transform CameraTransform => cameraTransform;
         public Transform PlayerTransform => playerTransform;
         public GeneratedFloorEncounterHost ActiveEncounter => _activeEncounter;
-        public RunEventProgress RunEventProgress => _runEventProgress;
-        public RunRewardInventory RewardInventory => _rewardInventory;
+        public RunLifecycle RunLifecycle => _run;
+        public RunEventProgress RunEventProgress => _run?.Progress;
+        public RunRewardInventory RewardInventory => _run?.Rewards;
         public EncounterResultPresenter ResultPresenter => _resultPresenter;
 
         // Allows the orchestrator's Core->interface adapter to inject a real layout.
@@ -128,23 +130,34 @@ namespace Tower.Floor
         [ContextMenu("Rebuild Forest Floor")]
         public void Rebuild()
         {
-            CaptureInteractionState();
+            if (_resetRunInteractionsOnRebuild)
+            {
+                // Retreat/regression: run-scoped anchor state resets with the run.
+                _resetRunInteractionsOnRebuild = false;
+                _interactionRuntimeStore.Clear();
+            }
+            else
+            {
+                CaptureInteractionState();
+            }
+
             ClearGeneratedRoot();
             _nodeHeight.Clear();
             _nodeOrigin.Clear();
             _registries.Clear();
 
-            RunEventPlan runPlan = RunEventPlan.Create(runSeed);
-            _runEventProgress = RunEventProgress.Create(runPlan);
+            EnsureRunLifecycle();
             int effectiveFloor = runFloorNumber == 0
-                ? runPlan.Slots[0].FloorNumber
+                ? FastForwardToNextEventFloor()
                 : runFloorNumber;
             _scheduledRunEvent = null;
-            for (int index = 0; index < runPlan.Slots.Count; index++)
+            IReadOnlyList<RunEventSlot> slots = _run.Progress.Plan.Slots;
+            for (int index = 0; index < slots.Count; index++)
             {
-                if (runPlan.Slots[index].FloorNumber == effectiveFloor)
+                if (slots[index].FloorNumber == effectiveFloor
+                    && index >= _run.Progress.CompletedCount)
                 {
-                    _scheduledRunEvent = runPlan.Slots[index];
+                    _scheduledRunEvent = slots[index];
                     break;
                 }
             }
@@ -897,7 +910,10 @@ namespace Tower.Floor
                 Debug.LogError(configured.Error, this);
                 DestroyGenerated(host);
                 _activeEncounter = null;
+                return;
             }
+
+            _activeEncounter.SetDefeatedHandler(OnEncounterDefeated);
         }
 
         private void OnEncounterResolved(GeneratedEncounterResult combatResult)
@@ -908,14 +924,7 @@ namespace Tower.Floor
                 return;
             }
 
-            Result<RunEventProgress> completed = _runEventProgress.CompleteNext(combatResult.EventId);
-            if (completed.IsFailure)
-            {
-                Debug.LogError(completed.Error, this);
-                return;
-            }
-
-            _runEventProgress = completed.Value;
+            EnsureRunLifecycle();
             Result<EncounterReward> reward = encounterRewardProfile.CreateReward(_scheduledRunEvent);
             if (reward.IsFailure)
             {
@@ -923,7 +932,7 @@ namespace Tower.Floor
                 return;
             }
 
-            Result<bool> granted = _rewardInventory.Grant(reward.Value);
+            Result<bool> granted = _run.ResolveEvent(combatResult.EventId, reward.Value);
             if (granted.IsFailure)
             {
                 Debug.LogError(granted.Error, this);
@@ -938,8 +947,8 @@ namespace Tower.Floor
             Result presented = _resultPresenter.Present(
                 combatResult,
                 reward.Value,
-                _runEventProgress.CompletedCount,
-                _runEventProgress.Plan.Slots.Count,
+                _run.Progress.CompletedCount,
+                _run.Progress.Plan.Slots.Count,
                 encounterResultSeconds);
             if (presented.IsFailure)
             {
@@ -949,9 +958,155 @@ namespace Tower.Floor
 
             Debug.Log(
                 $"[EncounterOutcome] event={combatResult.EventId} "
-                + $"progress={_runEventProgress.CompletedCount}/{_runEventProgress.Plan.Slots.Count} "
+                + $"progress={_run.Progress.CompletedCount}/{_run.Progress.Plan.Slots.Count} "
                 + $"reward={reward.Value.Type}+{reward.Value.Amount} newlyGranted={granted.Value} "
                 + $"actions={combatResult.ActionCount} duration={combatResult.DurationSeconds:0.0}s.",
+                this);
+            SaveRun();
+        }
+
+        private void OnEncounterDefeated(string defeatedEventId)
+        {
+            EnsureRunLifecycle();
+            Result<RunOutcome> retreat = _run.Retreat();
+            if (retreat.IsFailure)
+            {
+                Debug.LogError(retreat.Error, this);
+                return;
+            }
+
+            _resetRunInteractionsOnRebuild = true;
+            SaveRun();
+            Debug.Log(
+                $"[RunLifecycle] {retreat.Value} after defeat event={defeatedEventId} "
+                + $"retreats={_run.RetreatCount}; returning to floor=1.",
+                this);
+            if (_playerMovement != null)
+            {
+                _playerMovement.enabled = true;
+            }
+
+            runFloorNumber = 0;
+            Rebuild();
+        }
+
+        // Advances the run one floor (Ascend completion path). Public so QA
+        // and tests can drive the lifecycle without the ascend animation.
+        public Result<RunOutcome> AdvanceRunFloor()
+        {
+            EnsureRunLifecycle();
+            Result<RunOutcome> advanced = _run.AdvanceFloor();
+            if (advanced.IsFailure)
+            {
+                Debug.LogError(advanced.Error, this);
+                return advanced;
+            }
+
+            SaveRun();
+            if (advanced.Value == RunOutcome.Conquered)
+            {
+                Debug.Log(
+                    $"[RunLifecycle] Conquered stair-step; {_run.Rewards.ClaimCount} reward claims held.",
+                    this);
+                return advanced;
+            }
+
+            Debug.Log($"[RunLifecycle] Advancing to floor={_run.FloorNumber}.", this);
+            runFloorNumber = 0;
+            Rebuild();
+            return advanced;
+        }
+
+        private void EnsureRunLifecycle()
+        {
+            if (_run != null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                _runSaveRepository = CreateRunSaveRepository();
+                string[] args = Environment.GetCommandLineArgs();
+                if (QaCommandLine.HasFreshRunFlag(args))
+                {
+                    _runSaveRepository.Delete();
+                }
+                else if (_runSaveRepository.HasSave)
+                {
+                    Result<SaveGame> loaded = _runSaveRepository.Load();
+                    Result<RunLifecycle> restored = loaded.IsSuccess
+                        ? RunLifecycle.Restore(loaded.Value.runLifecycle)
+                        : Result<RunLifecycle>.Failure(loaded.Error);
+                    if (restored.IsSuccess)
+                    {
+                        _run = restored.Value;
+                        Debug.Log(
+                            $"[RunLifecycle] Resumed floor={_run.FloorNumber} "
+                            + $"progress={_run.Progress.CompletedCount}/{_run.Progress.Plan.Slots.Count} "
+                            + $"retreats={_run.RetreatCount} conquered={_run.IsConquered}.",
+                            this);
+                        return;
+                    }
+
+                    Debug.LogWarning($"[RunLifecycle] Save ignored: {restored.Error}", this);
+                }
+            }
+
+            _run = RunLifecycle.CreateNew(runSeed);
+            Debug.Log(
+                $"[RunLifecycle] New run seed={runSeed} events={_run.Progress.Plan.Slots.Count}.",
+                this);
+        }
+
+        // v0: floors without a scheduled event have no authored content yet
+        // (T59 owns non-event floor content), so the default flow advances
+        // straight to the next pending event floor.
+        private int FastForwardToNextEventFloor()
+        {
+            while (!_run.IsConquered && _run.NextPendingEvent != null
+                && _run.FloorNumber < _run.NextPendingEvent.FloorNumber)
+            {
+                Result<RunOutcome> advanced = _run.AdvanceFloor();
+                if (advanced.IsFailure)
+                {
+                    Debug.LogError(advanced.Error, this);
+                    break;
+                }
+            }
+
+            return _run.FloorNumber;
+        }
+
+        private SaveRepository CreateRunSaveRepository()
+        {
+            string path = System.IO.Path.Combine(Application.persistentDataPath, "run-lifecycle.json");
+            return SaveRepository.Create(path).Value;
+        }
+
+        private void SaveRun()
+        {
+            if (!Application.isPlaying || _run == null)
+            {
+                return;
+            }
+
+            if (_runSaveRepository == null)
+            {
+                _runSaveRepository = CreateRunSaveRepository();
+            }
+
+            var save = new SaveGame { runLifecycle = _run.Capture() };
+            Result written = _runSaveRepository.Save(save);
+            if (written.IsFailure)
+            {
+                Debug.LogError(written.Error, this);
+                return;
+            }
+
+            Debug.Log(
+                $"[RunLifecycle] Saved floor={_run.FloorNumber} "
+                + $"progress={_run.Progress.CompletedCount}/{_run.Progress.Plan.Slots.Count}.",
                 this);
         }
 
@@ -981,7 +1136,7 @@ namespace Tower.Floor
         {
             if (ascend == null) ascend = GetComponent<AscendController>() ?? gameObject.AddComponent<AscendController>();
             Transform party = playerTransform != null ? playerTransform : transform;
-            ascend.Play(party, cameraTransform);
+            ascend.Play(party, cameraTransform, () => AdvanceRunFloor());
         }
 
         private readonly Dictionary<Color, Material> _matCache = new Dictionary<Color, Material>();

@@ -31,6 +31,7 @@ namespace Tower.Combat
         private AnalogBattlefield battlefield;
         private AutonomousCombatDriver driver;
         private Action<GeneratedEncounterResult> resolved;
+        private Action<string> defeated;
         private Transform player;
         private Behaviour playerMovement;
         private Vector3 arenaCenter;
@@ -41,6 +42,10 @@ namespace Tower.Combat
 
         public int EnemyCount => enemies.Count;
         public bool IsCombatActive => engagement != null && engagement.IsCombatActive;
+
+        // T58: the run lifecycle reacts to enemy-team victory (retreat).
+        // Kept separate from Configure so existing call sites stay intact.
+        public void SetDefeatedHandler(Action<string> handler) => defeated = handler;
         public bool IsResolved { get; private set; }
         public bool IsPlayerDefeated { get; private set; }
         public IReadOnlyList<GameObject> Enemies => enemies;
@@ -512,8 +517,9 @@ namespace Tower.Combat
             }
 
             Debug.Log(
-                $"[GeneratedEncounter] Player team defeated event={eventId}; traversal remains locked.",
+                $"[GeneratedEncounter] Player team defeated event={eventId}; run lifecycle takes over.",
                 this);
+            defeated?.Invoke(eventId);
         }
 
         private void EndCombatPresentation()

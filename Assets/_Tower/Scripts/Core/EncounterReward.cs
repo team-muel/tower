@@ -57,8 +57,18 @@ namespace Tower.Core
         }
     }
 
-    // Run-scoped inventory seam. T58 owns serialization and lifecycle clearing;
-    // this ledger only guarantees one deterministic grant per completed event.
+    [Serializable]
+    public sealed class RunRewardClaimSnapshot
+    {
+        public string eventId;
+        public RewardType type;
+        public int amount;
+        public string displayName;
+    }
+
+    // Run-scoped inventory ledger. T58 owns serialization (Capture/Restore
+    // below) and lifecycle clearing (RunLifecycle.Retreat allocates a fresh
+    // ledger); this class guarantees one deterministic grant per event.
     public sealed class RunRewardInventory
     {
         private readonly Dictionary<string, EncounterReward> claims =
@@ -93,6 +103,54 @@ namespace Tower.Core
             claims.Add(reward.EventId, reward);
             totals[reward.Type] = AmountOf(reward.Type) + reward.Amount;
             return Result<bool>.Success(true);
+        }
+
+        public RunRewardClaimSnapshot[] Capture()
+        {
+            var ordered = new List<RunRewardClaimSnapshot>(claims.Count);
+            foreach (KeyValuePair<string, EncounterReward> claim in claims)
+            {
+                ordered.Add(new RunRewardClaimSnapshot
+                {
+                    eventId = claim.Key,
+                    type = claim.Value.Type,
+                    amount = claim.Value.Amount,
+                    displayName = claim.Value.DisplayName
+                });
+            }
+
+            ordered.Sort((a, b) => StringComparer.Ordinal.Compare(a.eventId, b.eventId));
+            return ordered.ToArray();
+        }
+
+        public static Result<RunRewardInventory> Restore(RunRewardClaimSnapshot[] snapshots)
+        {
+            var inventory = new RunRewardInventory();
+            foreach (RunRewardClaimSnapshot snapshot in snapshots ?? new RunRewardClaimSnapshot[0])
+            {
+                if (snapshot == null)
+                {
+                    return Result<RunRewardInventory>.Failure("Reward claim entries cannot be null.");
+                }
+
+                Result<EncounterReward> reward = EncounterReward.Create(
+                    snapshot.eventId,
+                    snapshot.type,
+                    snapshot.amount,
+                    snapshot.displayName);
+                if (reward.IsFailure)
+                {
+                    return Result<RunRewardInventory>.Failure(reward.Error);
+                }
+
+                Result<bool> granted = inventory.Grant(reward.Value);
+                if (granted.IsFailure)
+                {
+                    return Result<RunRewardInventory>.Failure(granted.Error);
+                }
+            }
+
+            return Result<RunRewardInventory>.Success(inventory);
         }
     }
 }
