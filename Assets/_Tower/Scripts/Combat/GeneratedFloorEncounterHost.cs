@@ -52,6 +52,7 @@ namespace Tower.Combat
         public IReadOnlyList<CombatantWorldView> Views => views;
         public CombatState CombatState { get; private set; }
         public CombatMetrics Metrics { get; private set; }
+        public string PlayerUnitId => playerUnitId;
 
         public Result Configure(
             Transform playerTransform,

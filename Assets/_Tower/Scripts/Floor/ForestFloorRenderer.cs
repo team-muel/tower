@@ -613,11 +613,70 @@ namespace Tower.Floor
             }
 
             _exploration.MarkVisited(CurrentNodeId);
+            EnsureHud();
+            EnsureCameraReadability();
             TryStartCurrentNodeEncounter();
             if (QaCommandLine.HasAutoEncounterFlag(Environment.GetCommandLineArgs()))
             {
                 QaEnterScheduledEncounter();
             }
+        }
+
+        private PlayRunHud _hud;
+
+        // T60: run/combat HUD reads live Core state through the composer.
+        private void EnsureHud()
+        {
+            if (_hud != null)
+            {
+                return;
+            }
+
+            _hud = gameObject.GetComponent<PlayRunHud>();
+            if (_hud == null)
+            {
+                _hud = gameObject.AddComponent<PlayRunHud>();
+            }
+
+            _hud.Configure(() => PlayRunHudComposer.Compose(_run, HudPlayerCombatant()));
+        }
+
+        private CombatantRef HudPlayerCombatant()
+        {
+            if (_activeEncounter == null || _activeEncounter.IsResolved
+                || _activeEncounter.CombatState == null
+                || string.IsNullOrEmpty(_activeEncounter.PlayerUnitId))
+            {
+                return null;
+            }
+
+            return _activeEncounter.CombatState.GetCombatant(_activeEncounter.PlayerUnitId);
+        }
+
+        // T60 readability: the runtime fallback camera fades occluders
+        // between itself and the player (reuses the T39 controller).
+        private void EnsureCameraReadability()
+        {
+            if (cameraTransform == null || playerTransform == null)
+            {
+                return;
+            }
+
+            Camera followCamera = cameraTransform.GetComponent<Camera>();
+            if (followCamera == null)
+            {
+                return;
+            }
+
+            CameraOcclusionFadeController fade =
+                cameraTransform.GetComponent<CameraOcclusionFadeController>();
+            if (fade == null)
+            {
+                fade = cameraTransform.gameObject.AddComponent<CameraOcclusionFadeController>();
+            }
+
+            fade.SetCamera(followCamera);
+            fade.SetTarget(playerTransform);
         }
 
         public bool QaEnterScheduledEncounter()
