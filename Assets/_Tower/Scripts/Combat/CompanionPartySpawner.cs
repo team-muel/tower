@@ -15,8 +15,20 @@ namespace Tower.Combat
         private Transform leader;
         private CompanionVisualProfile[] profiles = new CompanionVisualProfile[0];
         private Transform[] enemies = new Transform[0];
+        private BreadcrumbTrail trail;
 
         public IReadOnlyList<CompanionEntity> Entities => entities;
+
+        // 89 rule 1: one shared distance-based breadcrumb stream per party.
+        public BreadcrumbTrail Trail => trail;
+
+        private void Update()
+        {
+            if (leader != null && trail != null)
+            {
+                trail.Record(leader.position);
+            }
+        }
 
         public void Configure(
             Transform partyLeader,
@@ -26,6 +38,11 @@ namespace Tower.Combat
             leader = partyLeader;
             profiles = companionProfiles ?? new CompanionVisualProfile[0];
             enemies = enemyTransforms ?? new Transform[0];
+            trail = new BreadcrumbTrail();
+            if (leader != null)
+            {
+                trail.Record(leader.position);
+            }
         }
 
         public Result<IReadOnlyList<CompanionEntity>> SpawnNow()
@@ -62,13 +79,14 @@ namespace Tower.Combat
             }
 
             ClearExisting();
-            foreach (var profile in profiles)
+            for (var slotIndex = 0; slotIndex < profiles.Length; slotIndex++)
             {
+                var profile = profiles[slotIndex];
                 var entityObject = new GameObject("Companion_" + profile.CharacterDefinition.Id);
                 entityObject.transform.SetParent(transform, false);
                 entityObject.transform.position = leader.TransformPoint(profile.FormationOffset);
                 var entity = entityObject.AddComponent<CompanionEntity>();
-                var configured = entity.Configure(profile, leader, enemies);
+                var configured = entity.Configure(profile, leader, enemies, trail, slotIndex);
                 if (configured.IsFailure)
                 {
                     ClearExisting();

@@ -12,8 +12,18 @@ namespace Tower.Combat
     {
         private static readonly int SpeedHash = Animator.StringToHash("Speed");
 
+        // 89 Party Traversal Vision v2 rules 2-3: per-slot distance delays on
+        // the shared breadcrumb stream plus small alternating path-normal
+        // offsets. Provisional world-unit scaling of the animatic's
+        // 1.05-per-slot delays; not a formation.
+        private static readonly float[] FollowDistances = { 2.1f, 4.2f, 6.3f };
+        private static readonly float[] SlotLateralOffsets = { -0.36f, 0.36f, -0.2f };
+
         private CompanionVisualProfile profile;
         private Transform leader;
+        private BreadcrumbTrail breadcrumbs;
+        private float followDistance;
+        private float lateralOffset;
         private Transform[] enemies = new Transform[0];
         private GameObject visualRoot;
         private Animator animator;
@@ -32,7 +42,9 @@ namespace Tower.Combat
         public Result Configure(
             CompanionVisualProfile companionProfile,
             Transform partyLeader,
-            Transform[] enemyTransforms)
+            Transform[] enemyTransforms,
+            BreadcrumbTrail sharedTrail = null,
+            int slotIndex = 0)
         {
             if (companionProfile == null)
             {
@@ -53,6 +65,10 @@ namespace Tower.Combat
             profile = companionProfile;
             leader = partyLeader;
             enemies = enemyTransforms ?? new Transform[0];
+            breadcrumbs = sharedTrail;
+            int clampedSlot = Mathf.Clamp(slotIndex, 0, FollowDistances.Length - 1);
+            followDistance = FollowDistances[clampedSlot];
+            lateralOffset = SlotLateralOffsets[clampedSlot];
             name = "Companion_" + profile.CharacterDefinition.Id;
             CreateVisual();
             ConfigurePhysics();
@@ -88,7 +104,12 @@ namespace Tower.Combat
                 return;
             }
 
-            var target = FormationTarget();
+            // 89 rule 1-2: consume the leader's breadcrumb stream at this
+            // slot's distance delay; the fixed formation offset is only the
+            // spawn-moment fallback before any trajectory exists.
+            var target = breadcrumbs != null && breadcrumbs.Count >= 2
+                ? breadcrumbs.Sample(followDistance, lateralOffset, FormationTarget())
+                : FormationTarget();
             target.y = transform.position.y;
             var toTarget = target - transform.position;
             IsMoving = toTarget.magnitude > profile.ArriveDistance;

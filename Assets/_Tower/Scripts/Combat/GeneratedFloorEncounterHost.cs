@@ -433,16 +433,26 @@ namespace Tower.Combat
             Vector3 spawnCenter)
         {
             Vector3 offset = FormationOffset(index, count);
-            GameObject enemy = GameObject.CreatePrimitive(profile.BodyPrimitive);
-            enemy.name = $"GeneratedEnemy_{slot.KindSlot}_{slot.Index:00}";
+            string enemyName = $"GeneratedEnemy_{slot.KindSlot}_{slot.Index:00}";
+            GameObject enemy;
+            if (profile.BodyStyle == EnemyBodyStyle.Pillbug)
+            {
+                enemy = PillbugBodyBuilder.Build(enemyName, profile.BodyColor);
+            }
+            else
+            {
+                enemy = GameObject.CreatePrimitive(profile.BodyPrimitive);
+                enemy.name = enemyName;
+                Renderer renderer = enemy.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    renderer.sharedMaterial = TowerRuntimeMaterials.CreateLit(enemy.name + " Material", profile.BodyColor);
+                }
+            }
+
             enemy.transform.SetParent(transform, true);
             enemy.transform.position = spawnCenter + offset + (Vector3.up * 0.5f);
             enemy.transform.localScale = profile.BodyScale;
-            Renderer renderer = enemy.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.sharedMaterial = TowerRuntimeMaterials.CreateLit(enemy.name + " Material", profile.BodyColor);
-            }
 
             PillbugBrain brain = enemy.AddComponent<PillbugBrain>();
             var companionTargets = new Transform[companions.Count];

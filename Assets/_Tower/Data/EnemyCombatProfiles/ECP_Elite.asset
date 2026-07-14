@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Tower.Combat::Tower.Combat.EnemyCombatProfile
   kindSlot: elite
   characterDefinition: {fileID: 11400000, guid: d3ce36dce3fa4567b059ff6847dcdc4f, type: 2}
+  bodyStyle: 1
   bodyPrimitive: 1
   bodyColor: {r: 0.5, g: 0.24, b: 0.06, a: 1}
   bodyScale: {x: 1.25, y: 1.25, z: 1.25}

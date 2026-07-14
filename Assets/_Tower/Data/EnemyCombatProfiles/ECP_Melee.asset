@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Tower.Combat::Tower.Combat.EnemyCombatProfile
   kindSlot: melee
   characterDefinition: {fileID: 11400000, guid: d3ce36dce3fa4567b059ff6847dcdc4f, type: 2}
+  bodyStyle: 1
   bodyPrimitive: 0
   bodyColor: {r: 0.35, g: 0.12, b: 0.08, a: 1}
   bodyScale: {x: 1, y: 1, z: 1}

@@ -110,12 +110,19 @@ namespace Tower.Floor
         public Transform PlayerTransform => playerTransform;
         public GeneratedFloorEncounterHost ActiveEncounter => _activeEncounter;
         public RunLifecycle RunLifecycle => _run;
+        public IFloorLayoutSource Layout => _layout;
         public RunEventProgress RunEventProgress => _run?.Progress;
         public RunRewardInventory RewardInventory => _run?.Rewards;
         public EncounterResultPresenter ResultPresenter => _resultPresenter;
 
         // Allows the orchestrator's Core->interface adapter to inject a real layout.
-        public void SetLayoutSource(IFloorLayoutSource source) => _layout = source;
+        public void SetLayoutSource(IFloorLayoutSource source)
+        {
+            _layout = source;
+            _layoutInjected = source != null;
+        }
+
+        private bool _layoutInjected;
 
         private void Start()
         {
@@ -168,8 +175,11 @@ namespace Tower.Floor
 
             bool effectiveBossFloor = isBossFloor
                 || (_scheduledRunEvent != null && _scheduledRunEvent.Kind == RunEventKind.Boss);
+            // T59: every floor derives its own deterministic terrain seed and
+            // layout stretch so the ten floors stop being clones of one map.
+            int floorSeed = FloorSeeds.TerrainSeed(seed, effectiveFloor);
             _generationParameters = new FloorGenParams(
-                seed,
+                floorSeed,
                 new IntRange(nodeCount, nodeCount),
                 effectiveBossFloor,
                 new IntRange(8, 14),
@@ -181,9 +191,10 @@ namespace Tower.Floor
             _graph = FloorGenerator.Generate(_generationParameters);
             _biomeDef = BiomeDef.For(biomeId);
             _theme = _graph.BiomeTheme;
-            if (_layout == null)
+            if (!_layoutInjected)
             {
-                _layout = new LinearStubLayout(_graph, travelLength, crossWidth, gap, forkBow);
+                float stretch = FloorSeeds.TravelStretch(seed, effectiveFloor);
+                _layout = new LinearStubLayout(_graph, travelLength * stretch, crossWidth, gap, forkBow);
             }
 
             _terrainMat = ResolveTerrainMaterial();
