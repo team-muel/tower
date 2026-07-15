@@ -617,6 +617,7 @@ namespace Tower.Floor
 
             _exploration.MarkVisited(CurrentNodeId);
             EnsureHud();
+            EnsureSlowMo();
             EnsureCameraReadability();
             TryStartCurrentNodeEncounter();
             string[] commandLineArgs = Environment.GetCommandLineArgs();
@@ -638,6 +639,22 @@ namespace Tower.Floor
         }
 
         private PlayRunHud _hud;
+        private RunSlowMo _slowMo;
+
+        // T64: Left Shift bullet-time (CombatSpike stack) in the run loop.
+        private void EnsureSlowMo()
+        {
+            if (!Application.isPlaying || _slowMo != null)
+            {
+                return;
+            }
+
+            _slowMo = gameObject.GetComponent<RunSlowMo>();
+            if (_slowMo == null)
+            {
+                _slowMo = gameObject.AddComponent<RunSlowMo>();
+            }
+        }
 
         // T60: run/combat HUD reads live Core state through the composer.
         private void EnsureHud()
@@ -653,7 +670,11 @@ namespace Tower.Floor
                 _hud = gameObject.AddComponent<PlayRunHud>();
             }
 
-            _hud.Configure(() => PlayRunHudComposer.Compose(_run, HudPlayerCombatant(), _meta));
+            _hud.Configure(() => PlayRunHudComposer.Compose(
+                _run,
+                HudPlayerCombatant(),
+                _meta,
+                _slowMo == null ? -1f : _slowMo.Charge));
         }
 
         private CombatantRef HudPlayerCombatant()

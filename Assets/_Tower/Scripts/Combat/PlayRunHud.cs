@@ -18,6 +18,7 @@ namespace Tower.Combat
         public bool CombatVisible;
         public string PlayerHpLine = string.Empty;
         public float PlayerHpFraction;
+        public float SlowMoCharge = -1f; // negative = gauge hidden
         public List<HudAbilitySlot> Slots = new List<HudAbilitySlot>();
     }
 
@@ -29,9 +30,10 @@ namespace Tower.Combat
         public static PlayRunHudModel Compose(
             RunLifecycle run,
             CombatantRef player,
-            MetaProgress meta = null)
+            MetaProgress meta = null,
+            float slowMoCharge = -1f)
         {
-            var model = new PlayRunHudModel();
+            var model = new PlayRunHudModel { SlowMoCharge = slowMoCharge };
             if (run != null)
             {
                 model.RunLine = run.IsConquered
@@ -118,6 +120,18 @@ namespace Tower.Combat
             if (!string.IsNullOrEmpty(model.RunLine))
             {
                 DrawPanel(new Rect(14f, 12f, 430f, 30f), model.RunLine, TextAnchor.MiddleLeft);
+            }
+
+            if (model.SlowMoCharge >= 0f)
+            {
+                // T64 revolver gauge: thin amber bar under the run panel.
+                GUI.color = new Color(0.13f, 0.13f, 0.13f, 0.85f);
+                GUI.DrawTexture(new Rect(14f, 46f, 430f, 6f), Texture2D.whiteTexture);
+                GUI.color = new Color(1f, 0.78f, 0.3f, 0.95f);
+                GUI.DrawTexture(
+                    new Rect(14f, 46f, 430f * Mathf.Clamp01(model.SlowMoCharge), 6f),
+                    Texture2D.whiteTexture);
+                GUI.color = Color.white;
             }
 
             if (!string.IsNullOrEmpty(model.RewardLine))

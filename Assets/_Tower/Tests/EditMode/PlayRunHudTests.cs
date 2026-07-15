@@ -84,6 +84,16 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void Compose_PassesSlowMoChargeThrough()
+        {
+            PlayRunHudModel hidden = PlayRunHudComposer.Compose(null, null);
+            PlayRunHudModel shown = PlayRunHudComposer.Compose(null, null, null, 0.42f);
+
+            Assert.That(hidden.SlowMoCharge, Is.LessThan(0f), "gauge hidden by default");
+            Assert.That(shown.SlowMoCharge, Is.EqualTo(0.42f).Within(0.001f));
+        }
+
+        [Test]
         public void Compose_ConqueredRunReadsAsConquered()
         {
             RunLifecycle run = RunLifecycle.CreateNew(4242);
