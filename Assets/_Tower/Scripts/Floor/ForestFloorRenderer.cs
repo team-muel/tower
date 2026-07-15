@@ -135,6 +135,7 @@ namespace Tower.Floor
         private void Update()
         {
             TryEnterNearestForkAtExit();
+            HandleVoluntaryRetreat();
         }
 
         [ContextMenu("Rebuild Forest Floor")]
@@ -1077,6 +1078,13 @@ namespace Tower.Floor
 
         private void OnEncounterDefeated(string defeatedEventId)
         {
+            RetreatRun($"파티 전멸 — {defeatedEventId}");
+        }
+
+        // T58 retreat core + T66 presentation; shared by defeat and the
+        // voluntary retreat input.
+        private void RetreatRun(string cause)
+        {
             EnsureRunLifecycle();
             Result<RunOutcome> retreat = _run.Retreat();
             if (retreat.IsFailure)
@@ -1088,9 +1096,21 @@ namespace Tower.Floor
             _resetRunInteractionsOnRebuild = true;
             SaveRun();
             Debug.Log(
-                $"[RunLifecycle] {retreat.Value} after defeat event={defeatedEventId} "
+                $"[RunLifecycle] {retreat.Value} ({cause}) "
                 + $"retreats={_run.RetreatCount}; returning to floor=1.",
                 this);
+            EnsureTransition();
+            if (_transition != null)
+            {
+                bool regression = retreat.Value == RunOutcome.GreatRegression;
+                _transition.Show(
+                    regression ? "대회귀" : "후퇴",
+                    regression
+                        ? "세 번째 후퇴 — 시간이 시작점으로 되감긴다"
+                        : $"{cause}  ·  후퇴 {_run.RetreatCount}/3",
+                    regression ? 3.4f : 2.6f);
+            }
+
             if (_playerMovement != null)
             {
                 _playerMovement.enabled = true;
@@ -1098,6 +1118,48 @@ namespace Tower.Floor
 
             runFloorNumber = 0;
             Rebuild();
+        }
+
+        private RunTransitionPresenter _transition;
+        private float _retreatHoldSeconds;
+
+        private void EnsureTransition()
+        {
+            if (!Application.isPlaying || _transition != null)
+            {
+                return;
+            }
+
+            _transition = gameObject.GetComponent<RunTransitionPresenter>();
+            if (_transition == null)
+            {
+                _transition = gameObject.AddComponent<RunTransitionPresenter>();
+            }
+        }
+
+        // T66: voluntary retreat — hold R for 1.2 s outside active combat.
+        private void HandleVoluntaryRetreat()
+        {
+            if (!Application.isPlaying || _run == null || _run.IsConquered
+                || IsEncounterBlocking || _busy)
+            {
+                _retreatHoldSeconds = 0f;
+                return;
+            }
+
+            if (Input.GetKey(KeyCode.R))
+            {
+                _retreatHoldSeconds += Time.unscaledDeltaTime;
+                if (_retreatHoldSeconds >= 1.2f)
+                {
+                    _retreatHoldSeconds = 0f;
+                    RetreatRun("자발적 후퇴");
+                }
+            }
+            else
+            {
+                _retreatHoldSeconds = 0f;
+            }
         }
 
         // Advances the run one floor (Ascend completion path). Public so QA
@@ -1127,6 +1189,16 @@ namespace Tower.Floor
                         $"[MetaProgress] Conquest recorded; platinum={paid.Value} "
                         + $"conquests={_meta.ConquestCount} shortcut=stairway-0.",
                         this);
+                }
+
+                EnsureTransition();
+                if (_transition != null)
+                {
+                    _transition.Show(
+                        "층계 정복",
+                        $"이벤트 {_run.Progress.CompletedCount}/{_run.Progress.Plan.Slots.Count}"
+                        + $"  ·  백금화 +{MetaProgress.PlatinumPerConquest}",
+                        3.4f);
                 }
 
                 return advanced;
