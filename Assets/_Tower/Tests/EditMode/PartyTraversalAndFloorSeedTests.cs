@@ -118,6 +118,48 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void Renderer_FallbackCameraUsesTheOwnerTunedOrbit()
+        {
+            // Other fixtures can leave an active MainCamera behind, which
+            // bypasses the fallback path; park them for this test.
+            Camera[] parked = Object.FindObjectsByType<Camera>(FindObjectsSortMode.None);
+            var reactivate = new System.Collections.Generic.List<GameObject>();
+            foreach (Camera parkedCamera in parked)
+            {
+                if (parkedCamera != null && parkedCamera.gameObject.activeSelf)
+                {
+                    parkedCamera.gameObject.SetActive(false);
+                    reactivate.Add(parkedCamera.gameObject);
+                }
+            }
+
+            GameObject host = new GameObject("camera-canon");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                renderer.Rebuild();
+
+                IsoCameraFollow orbit = renderer.CameraTransform.GetComponent<IsoCameraFollow>();
+                Assert.That(orbit, Is.Not.Null, "T63: canon orbit camera must drive the run loop");
+                Assert.That(orbit.basePitch, Is.EqualTo(25f), "owner-tuned 2026-07-12 value");
+                Assert.That(orbit.yawSensitivity, Is.EqualTo(4f));
+                Assert.That(orbit.distance, Is.EqualTo(14f));
+                Assert.That(renderer.CameraTransform.GetComponent<ForestFloorCamera>(), Is.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                foreach (GameObject parkedObject in reactivate)
+                {
+                    if (parkedObject != null)
+                    {
+                        parkedObject.SetActive(true);
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void PillbugBody_BuildsSegmentedBodyWithSingleRootCollider()
         {
             GameObject body = PillbugBodyBuilder.Build("pillbug-test", new Color(0.4f, 0.15f, 0.1f));

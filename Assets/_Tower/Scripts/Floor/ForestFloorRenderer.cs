@@ -765,8 +765,10 @@ namespace Tower.Floor
                 Camera generatedCamera = cameraObject.AddComponent<Camera>();
                 generatedCamera.clearFlags = CameraClearFlags.Skybox;
                 cameraObject.AddComponent<AudioListener>();
-                ForestFloorCamera follow = cameraObject.AddComponent<ForestFloorCamera>();
-                follow.Configure(playerTransform);
+                // T63: the owner-tuned Prototype orbit camera is the canon
+                // (2026-07-12 values baked into IsoCameraFollow defaults).
+                IsoCameraFollow follow = cameraObject.AddComponent<IsoCameraFollow>();
+                follow.target = playerTransform;
                 cameraTransform = cameraObject.transform;
             }
 
