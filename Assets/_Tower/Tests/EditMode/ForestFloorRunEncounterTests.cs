@@ -228,6 +228,38 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void RunTransition_BlocksTraversalAndFloorAdvanceUntilItExpires()
+        {
+            GameObject host = new GameObject("forest-transition-lock");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                renderer.Rebuild();
+                RunTransitionPresenter transition = host.AddComponent<RunTransitionPresenter>();
+                SetPrivateField(renderer, "_transition", transition);
+                Assert.That(transition.Show("후퇴", "전환 중", 2f).IsSuccess, Is.True);
+
+                renderer.PlayerTransform.position = new LinearStubLayout(renderer.Graph)
+                    .GetField(renderer.CurrentNodeId)
+                    .ExitPoint;
+                Assert.That(renderer.IsTransitionBlocking, Is.True);
+                Assert.That(renderer.TryEnterNearestForkAtExit(), Is.False);
+
+                Result<RunOutcome> blocked = renderer.AdvanceRunFloor();
+                Assert.That(blocked.IsFailure, Is.True);
+                Assert.That(blocked.Error, Does.Contain("transition"));
+
+                transition.Tick(2.1f);
+                Assert.That(renderer.IsTransitionBlocking, Is.False);
+                Assert.That(renderer.TryEnterNearestForkAtExit(), Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
         public void RunLifecycle_DefeatRetreatsAndThirdDefeatRegresses()
         {
             GameObject host = new GameObject("forest-run-defeat");
