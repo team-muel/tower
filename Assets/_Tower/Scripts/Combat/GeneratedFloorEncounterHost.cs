@@ -61,6 +61,9 @@ namespace Tower.Combat
         public CombatMetrics Metrics { get; private set; }
         public string PlayerUnitId => playerUnitId;
         public RealtimeCommandBoard CommandBoard => commandBoard;
+        public CommandTelemetrySnapshot CommandTelemetry => commandBoard == null
+            ? default
+            : commandBoard.Telemetry;
 
         public Result Configure(
             Transform playerTransform,

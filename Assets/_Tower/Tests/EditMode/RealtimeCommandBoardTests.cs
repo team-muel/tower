@@ -46,6 +46,30 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void Telemetry_TracksStanceAndPreciseOrderLifecycle()
+        {
+            var board = new RealtimeCommandBoard();
+
+            Assert.That(board.SetStance("ember", CommandStance.Guard).IsSuccess, Is.True);
+            Assert.That(board.IssuePreciseOrder(
+                "ember", "strike", "pillbug-a", null, true, 0f, lifetimeSeconds: 3f).IsSuccess, Is.True);
+            Assert.That(board.IssuePreciseOrder(
+                "ember", "thermal-break", "pillbug-b", null, true, 1f, lifetimeSeconds: 3f).IsSuccess, Is.True);
+            Assert.That(board.ConsumePreciseOrder("ember"), Is.True);
+
+            Assert.That(board.IssuePreciseOrder(
+                "ember", "strike", "pillbug-a", null, true, 2f, lifetimeSeconds: 1f).IsSuccess, Is.True);
+            board.Advance(3f);
+
+            CommandTelemetrySnapshot telemetry = board.Telemetry;
+            Assert.That(telemetry.StanceCommands, Is.EqualTo(1));
+            Assert.That(telemetry.PreciseOrdersIssued, Is.EqualTo(3));
+            Assert.That(telemetry.PreciseOrdersReplaced, Is.EqualTo(1));
+            Assert.That(telemetry.PreciseOrdersConsumed, Is.EqualTo(1));
+            Assert.That(telemetry.PreciseOrdersExpired, Is.EqualTo(1));
+        }
+
+        [Test]
         public void PreciseOrder_IsRejectedOutsideBulletTime()
         {
             var board = new RealtimeCommandBoard();

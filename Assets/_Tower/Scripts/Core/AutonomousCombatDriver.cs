@@ -326,6 +326,7 @@ namespace Tower.Core
                 if (consumePreciseOrder)
                 {
                     commandBoard.ConsumePreciseOrder(unitId);
+                    commandBoard.RecordPreciseOrderFallback();
                 }
             }
 

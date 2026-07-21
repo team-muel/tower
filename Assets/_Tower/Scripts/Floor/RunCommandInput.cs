@@ -101,7 +101,8 @@ namespace Tower.Floor
             }
 
             float width = 390f;
-            float height = 64f + (encounter.Companions.Count * 22f);
+            CommandTelemetrySnapshot telemetry = encounter.CommandTelemetry;
+            float height = 104f + (encounter.Companions.Count * 22f);
             Rect panel = new Rect(14f, Screen.height - height - 14f, width, height);
             GUI.Box(panel, GUIContent.none);
 
@@ -113,6 +114,18 @@ namespace Tower.Floor
             GUI.Label(
                 new Rect(panel.x + 8f, panel.y + 5f, width - 16f, 20f),
                 "F1-F3 select · 1 Assault · 2 Guard · 3 Focus · Q precise (Left Shift)",
+                style);
+            GUI.Label(
+                new Rect(panel.x + 8f, panel.y + 25f, width - 16f, 20f),
+                "Commands  stance:" + telemetry.StanceCommands
+                    + "  precise:" + telemetry.PreciseOrdersIssued
+                    + "  used:" + telemetry.PreciseOrdersConsumed,
+                style);
+            GUI.Label(
+                new Rect(panel.x + 8f, panel.y + 45f, width - 16f, 20f),
+                "replaced:" + telemetry.PreciseOrdersReplaced
+                    + "  fallback:" + telemetry.PreciseOrderFallbacks
+                    + "  expired:" + telemetry.PreciseOrdersExpired,
                 style);
 
             for (int index = 0; index < encounter.Companions.Count; index++)
@@ -127,7 +140,7 @@ namespace Tower.Floor
                     ? string.Empty
                     : " -> " + assignment.FocusTargetId;
                 GUI.Label(
-                    new Rect(panel.x + 8f, panel.y + 26f + (index * 22f), width - 16f, 20f),
+                    new Rect(panel.x + 8f, panel.y + 66f + (index * 22f), width - 16f, 20f),
                     marker + companion.DisplayName + "  ["
                         + CommandStanceRules.DisplayName(assignment.Stance) + "]" + target,
                     style);

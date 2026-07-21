@@ -192,6 +192,7 @@ namespace Tower.Tests.EditMode
             Assert.That(stepped.Value.Events, Has.Some.Matches<AutonomousCombatEvent>(
                 entry => entry.UnitId == "player" && !entry.IsPreciseOrder && entry.AbilityResolved));
             Assert.That(board.PreciseOrders, Is.Empty);
+            Assert.That(board.Telemetry.PreciseOrderFallbacks, Is.EqualTo(1));
         }
 
         [Test]
