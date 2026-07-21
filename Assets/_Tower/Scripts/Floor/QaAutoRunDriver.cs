@@ -44,6 +44,12 @@ namespace Tower.Floor
                 return;
             }
 
+            if (floorRenderer.IsResultBlocking)
+            {
+                settleTimer = 0f;
+                return; // let the victory result finish before advancing
+            }
+
             var encounter = floorRenderer.ActiveEncounter;
             if (encounter != null && !encounter.IsResolved && !encounter.IsPlayerDefeated)
             {
