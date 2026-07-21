@@ -151,6 +151,68 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void Step_ConsumesPreciseOrderAndRecordsItOnTheCombatEvent()
+        {
+            var board = new RealtimeCommandBoard();
+            Assert.That(board.IssuePreciseOrder(
+                "player", "player-strike", "enemy", null, true, 0f).IsSuccess, Is.True);
+            var fixture = CreateFixture(
+                playerHp: 20,
+                enemyHp: 20,
+                playerPosition: new BattlePos(2f, 4f),
+                enemyPosition: new BattlePos(3f, 4f),
+                externallyPositionedUnitIds: new[] { "player" },
+                commandBoard: board);
+
+            var stepped = fixture.Driver.Step();
+
+            Assert.That(stepped.IsSuccess, Is.True, stepped.Error);
+            Assert.That(stepped.Value.Events, Has.Some.Matches<AutonomousCombatEvent>(
+                entry => entry.UnitId == "player" && entry.IsPreciseOrder && entry.AbilityResolved));
+            Assert.That(board.PreciseOrders, Is.Empty);
+        }
+
+        [Test]
+        public void Step_FallsBackWhenPreciseOrderTargetBecomesInvalid()
+        {
+            var board = new RealtimeCommandBoard();
+            Assert.That(board.IssuePreciseOrder(
+                "player", "player-strike", "missing-enemy", null, true, 0f).IsSuccess, Is.True);
+            var fixture = CreateFixture(
+                playerHp: 20,
+                enemyHp: 20,
+                playerPosition: new BattlePos(2f, 4f),
+                enemyPosition: new BattlePos(3f, 4f),
+                externallyPositionedUnitIds: new[] { "player" },
+                commandBoard: board);
+
+            var stepped = fixture.Driver.Step();
+
+            Assert.That(stepped.IsSuccess, Is.True, stepped.Error);
+            Assert.That(stepped.Value.Events, Has.Some.Matches<AutonomousCombatEvent>(
+                entry => entry.UnitId == "player" && !entry.IsPreciseOrder && entry.AbilityResolved));
+            Assert.That(board.PreciseOrders, Is.Empty);
+        }
+
+        [Test]
+        public void Step_ExposesCompanionIntentThreeQuartersOfASecondBeforeAction()
+        {
+            var fixture = CreateFixture(
+                playerHp: 20,
+                enemyHp: 20,
+                playerPosition: new BattlePos(2f, 4f),
+                enemyPosition: new BattlePos(3f, 4f),
+                tickSeconds: 0.25f);
+
+            var telegraph = fixture.Driver.Step();
+
+            Assert.That(telegraph.IsSuccess, Is.True, telegraph.Error);
+            Assert.That(telegraph.Value.ElapsedSeconds, Is.EqualTo(0.25f).Within(0.0001f));
+            Assert.That(telegraph.Value.Intents, Has.Some.Matches<AutonomousCombatIntent>(
+                intent => intent.UnitId == "player" && intent.ExecuteAtSeconds == 1f));
+        }
+
+        [Test]
         public void Create_RejectsNonPositiveFixedTickConfiguration()
         {
             var fixture = CreateFixture(playerHp: 20, enemyHp: 20, playerPosition: new BattlePos(2f, 4f), enemyPosition: new BattlePos(10f, 4f));
@@ -175,7 +237,8 @@ namespace Tower.Tests.EditMode
             int playerSpeed = 10,
             int enemySpeed = 10,
             float tickSeconds = 1f,
-            IEnumerable<string> externallyPositionedUnitIds = null)
+            IEnumerable<string> externallyPositionedUnitIds = null,
+            RealtimeCommandBoard commandBoard = null)
         {
             var battlefield = new AnalogBattlefield(14f, 8f);
             var statusBoard = new StatusBoard();
@@ -200,7 +263,8 @@ namespace Tower.Tests.EditMode
                 resolver.Value,
                 tickSeconds: tickSeconds,
                 movementUnitsPerSecond: 2f,
-                externallyPositionedUnitIds: externallyPositionedUnitIds);
+                externallyPositionedUnitIds: externallyPositionedUnitIds,
+                commandBoard: commandBoard);
             Assert.That(driver.IsSuccess, Is.True, driver.Error);
 
             return new Fixture(state.Value, battlefield, scorer.Value, resolver.Value, metrics, driver.Value);

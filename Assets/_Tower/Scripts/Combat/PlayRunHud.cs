@@ -23,8 +23,9 @@ namespace Tower.Combat
     }
 
     // T60: composes the play HUD from live Core state. Pure and EditMode-
-    // testable; the MonoBehaviour below only renders the model. Command and
-    // counter UI stay owner-frozen and are deliberately absent.
+    // testable; the MonoBehaviour below only renders the model. Companion
+    // command controls live in the run command surface, while counter UI stays
+    // owner-frozen and deliberately absent.
     public static class PlayRunHudComposer
     {
         public static PlayRunHudModel Compose(

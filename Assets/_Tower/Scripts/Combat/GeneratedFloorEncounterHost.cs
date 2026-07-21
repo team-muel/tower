@@ -37,6 +37,7 @@ namespace Tower.Combat
         private Vector3 arenaCenter;
         private string eventId;
         private string playerUnitId;
+        private RealtimeCommandBoard commandBoard;
         private bool secondaryBrainsEnabled;
         private float simulationAccumulator;
 
@@ -55,9 +56,11 @@ namespace Tower.Combat
         public bool IsPlayerDefeated { get; private set; }
         public IReadOnlyList<GameObject> Enemies => enemies;
         public IReadOnlyList<CombatantWorldView> Views => views;
+        public IReadOnlyList<CompanionEntity> Companions => companions;
         public CombatState CombatState { get; private set; }
         public CombatMetrics Metrics { get; private set; }
         public string PlayerUnitId => playerUnitId;
+        public RealtimeCommandBoard CommandBoard => commandBoard;
 
         public Result Configure(
             Transform playerTransform,
@@ -70,7 +73,8 @@ namespace Tower.Combat
             Vector3 spawnCenter,
             Action<GeneratedEncounterResult> onResolved,
             float triggerRadius = 7f,
-            float introHoldSeconds = 0.45f)
+            float introHoldSeconds = 0.45f,
+            RealtimeCommandBoard realtimeCommandBoard = null)
         {
             if (playerTransform == null || playerMovementBehaviour == null || playerDefinition == null
                 || encounter == null || runEvent == null)
@@ -133,6 +137,7 @@ namespace Tower.Combat
             player = playerTransform;
             playerMovement = playerMovementBehaviour;
             playerUnitId = playerDefinition.Id;
+            commandBoard = realtimeCommandBoard ?? new RealtimeCommandBoard();
             eventId = runEvent.EventId;
             resolved = onResolved;
             arenaCenter = spawnCenter;
@@ -235,6 +240,7 @@ namespace Tower.Combat
             }
 
             IsResolved = true;
+            commandBoard?.ClearPreciseOrders();
             EndCombatPresentation();
             var combatResult = new GeneratedEncounterResult(
                 eventId,
@@ -387,7 +393,8 @@ namespace Tower.Combat
                 resolver.Value,
                 SimulationTickSeconds,
                 MovementUnitsPerSecond,
-                new[] { playerUnitId });
+                new[] { playerUnitId },
+                commandBoard);
             if (createdDriver.IsFailure) return Result.Failure(createdDriver.Error);
             driver = createdDriver.Value;
             SyncWorldViews();
@@ -508,6 +515,14 @@ namespace Tower.Combat
                 CombatantRef combatant = CombatState.GetCombatant(view.UnitId);
                 if (combatant == null) continue;
                 view.Refresh(combatant.State);
+                if (driver != null && driver.TryGetActiveIntent(view.UnitId, out AutonomousCombatIntent intent))
+                {
+                    view.SetIntent(intent);
+                }
+                else
+                {
+                    view.ClearIntent();
+                }
 
                 if (combatant.IsAlive && !StringComparer.Ordinal.Equals(view.UnitId, playerUnitId)
                     && bodies.TryGetValue(view.UnitId, out Transform body))
@@ -527,9 +542,153 @@ namespace Tower.Combat
             }
         }
 
+        public Result SetCommandStance(string companionUnitId, CommandStance stance, string focusTargetId = null)
+        {
+            if (commandBoard == null)
+            {
+                return Result.Failure("Command board is not ready.");
+            }
+
+            if (!IsCompanionUnit(companionUnitId))
+            {
+                return Result.Failure("Command stance requires a living companion unit.");
+            }
+
+            return commandBoard.SetStance(companionUnitId, stance, focusTargetId);
+        }
+
+        public Result IssueBestPreciseOrder(string companionUnitId, bool commandWindowActive)
+        {
+            if (commandBoard == null || CombatState == null || battlefield == null)
+            {
+                return Result.Failure("Combat command runtime is not ready.");
+            }
+
+            if (!IsCompanionUnit(companionUnitId))
+            {
+                return Result.Failure("Precise order requires a living companion unit.");
+            }
+
+            string targetId = NearestLivingEnemy(companionUnitId);
+            if (string.IsNullOrEmpty(targetId))
+            {
+                return Result.Failure("No living enemy is available for a precise order.");
+            }
+
+            CombatantRef companion = CombatState.GetCombatant(companionUnitId);
+            string abilityId = null;
+            BattlePos? targetPoint = null;
+            foreach (AbilityDef ability in companion.State.Loadout.Abilities)
+            {
+                bool canTargetEnemy = ability != null
+                    && ((ability.TargetType == AbilityTargetType.Enemy
+                            && ability.Tag != AbilityTag.Amplify)
+                        || (ability.TargetType == AbilityTargetType.Cell
+                            && (ability.Tag == AbilityTag.Apply || ability.Tag == AbilityTag.Consume)));
+                if (canTargetEnemy && companion.State.RemainingCooldownSeconds(ability.Id) <= 0f)
+                {
+                    abilityId = ability.Id;
+                    if (ability.TargetType == AbilityTargetType.Cell)
+                    {
+                        targetPoint = battlefield.FindOccupant(targetId);
+                    }
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(abilityId))
+            {
+                return Result.Failure("Companion has no ready ability for a precise order.");
+            }
+
+            return commandBoard.IssuePreciseOrder(
+                companionUnitId,
+                abilityId,
+                targetId,
+                targetPoint,
+                commandWindowActive,
+                CombatState.ElapsedSeconds);
+        }
+
+        public Result SetFocusStanceOnNearestEnemy(string companionUnitId)
+        {
+            if (commandBoard == null || CombatState == null || battlefield == null)
+            {
+                return Result.Failure("Combat command runtime is not ready.");
+            }
+
+            if (!IsCompanionUnit(companionUnitId))
+            {
+                return Result.Failure("Focus stance requires a living companion unit.");
+            }
+
+            string targetId = NearestLivingEnemy(companionUnitId);
+            return string.IsNullOrEmpty(targetId)
+                ? Result.Failure("No living enemy is available for focus stance.")
+                : commandBoard.SetStance(companionUnitId, CommandStance.Focus, targetId);
+        }
+
+        private bool IsCompanionUnit(string unitId)
+        {
+            if (string.IsNullOrEmpty(unitId) || CombatState == null)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < companions.Count; index++)
+            {
+                if (companions[index] != null
+                    && StringComparer.Ordinal.Equals(companions[index].UnitId, unitId)
+                    && CombatState.IsAlive(unitId))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private string NearestLivingEnemy(string fromUnitId)
+        {
+            BattlePos? from = battlefield.FindOccupant(fromUnitId);
+            if (!from.HasValue)
+            {
+                return null;
+            }
+
+            string bestId = null;
+            float bestDistance = float.PositiveInfinity;
+            foreach (string unitId in CombatState.LivingUnitIds)
+            {
+                CombatantRef candidate = CombatState.GetCombatant(unitId);
+                if (candidate == null || candidate.Team != CombatTeam.Enemy)
+                {
+                    continue;
+                }
+
+                BattlePos? position = battlefield.FindOccupant(unitId);
+                if (!position.HasValue)
+                {
+                    continue;
+                }
+
+                float distance = battlefield.Distance(from.Value, position.Value);
+                if (distance < bestDistance
+                    || (Mathf.Approximately(distance, bestDistance)
+                        && string.CompareOrdinal(unitId, bestId) < 0))
+                {
+                    bestDistance = distance;
+                    bestId = unitId;
+                }
+            }
+
+            return bestId;
+        }
+
         private void HandlePlayerDefeat()
         {
             IsPlayerDefeated = true;
+            commandBoard?.ClearPreciseOrders();
             engagement.ResolveEncounter();
             EndCombatPresentation();
             if (playerMovement != null)

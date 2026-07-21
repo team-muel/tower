@@ -16,13 +16,18 @@ namespace Tower.Combat
         private Renderer[] bodyRenderers = new Renderer[0];
         private Collider[] bodyColliders = new Collider[0];
         private GameObject barRoot;
+        private GameObject labelsRoot;
         private Transform fill;
+        private TextMesh dispositionText;
+        private TextMesh intentText;
 
         public string UnitId { get; private set; }
         public int CurrentHp { get; private set; }
         public int MaxHp { get; private set; }
         public float FillRatio { get; private set; }
         public bool IsAlive { get; private set; }
+        public string DispositionLabel { get; private set; } = string.Empty;
+        public string IntentLabel { get; private set; } = string.Empty;
 
         public Result Configure(string unitId, Transform bodyTransform, float barHeight)
         {
@@ -48,6 +53,7 @@ namespace Tower.Combat
             bodyRenderers = visibleRenderers.ToArray();
             bodyColliders = body.GetComponentsInChildren<Collider>(true);
             CreateBar(barHeight);
+            CreateLabels(barHeight);
             return Result.Success();
         }
 
@@ -62,6 +68,11 @@ namespace Tower.Combat
             MaxHp = state.Definition.MaxHp;
             FillRatio = MaxHp <= 0 ? 0f : Mathf.Clamp01((float)CurrentHp / MaxHp);
             IsAlive = CurrentHp > 0;
+            DispositionLabel = state.Definition.Disposition.ToString();
+            if (dispositionText != null)
+            {
+                dispositionText.text = DispositionLabel;
+            }
 
             if (fill != null)
             {
@@ -72,6 +83,11 @@ namespace Tower.Combat
             if (barRoot != null)
             {
                 barRoot.SetActive(IsAlive);
+            }
+
+            if (labelsRoot != null)
+            {
+                labelsRoot.SetActive(IsAlive);
             }
 
             for (int index = 0; index < bodyRenderers.Length; index++)
@@ -85,6 +101,41 @@ namespace Tower.Combat
             }
 
             return Result.Success();
+        }
+
+        public void SetIntent(AutonomousCombatIntent intent)
+        {
+            if (intent == null)
+            {
+                ClearIntent();
+                return;
+            }
+
+            string action = intent.Plan.Kind == AiPlanKind.Ability
+                ? intent.Plan.AbilityId
+                : intent.Plan.Kind.ToString();
+            string target = string.IsNullOrEmpty(intent.Plan.TargetUnitId)
+                ? string.Empty
+                : " -> " + intent.Plan.TargetUnitId;
+            IntentLabel = (intent.IsPreciseOrder ? "! " : "… ")
+                + CommandStanceRules.DisplayName(intent.Stance)
+                + ": " + action + target;
+            if (intentText != null)
+            {
+                intentText.text = IntentLabel;
+                intentText.color = intent.IsPreciseOrder
+                    ? new Color(1f, 0.78f, 0.25f)
+                    : new Color(0.75f, 0.9f, 1f);
+            }
+        }
+
+        public void ClearIntent()
+        {
+            IntentLabel = string.Empty;
+            if (intentText != null)
+            {
+                intentText.text = string.Empty;
+            }
         }
 
         private void CreateBar(float height)
@@ -104,6 +155,42 @@ namespace Tower.Combat
             fillObject.transform.SetParent(barRoot.transform, false);
             fillObject.transform.localPosition = new Vector3(0f, 0f, -0.04f);
             fill = fillObject.transform;
+        }
+
+        private void CreateLabels(float height)
+        {
+            labelsRoot = new GameObject("CombatIntentLabels");
+            labelsRoot.transform.SetParent(transform, false);
+            labelsRoot.transform.localPosition = Vector3.up * (height + 0.24f);
+
+            dispositionText = CreateLabel(
+                "Disposition",
+                labelsRoot.transform,
+                Vector3.zero,
+                new Color(1f, 0.62f, 0.62f));
+            intentText = CreateLabel(
+                "Intent",
+                labelsRoot.transform,
+                Vector3.up * 0.16f,
+                Color.white);
+        }
+
+        private static TextMesh CreateLabel(
+            string labelName,
+            Transform parent,
+            Vector3 localPosition,
+            Color color)
+        {
+            GameObject labelObject = new GameObject(labelName);
+            labelObject.transform.SetParent(parent, false);
+            labelObject.transform.localPosition = localPosition;
+            TextMesh text = labelObject.AddComponent<TextMesh>();
+            text.anchor = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignment.Center;
+            text.characterSize = 0.06f;
+            text.fontSize = 32;
+            text.color = color;
+            return text;
         }
 
         private static GameObject CreateBarPart(string partName, Color color)

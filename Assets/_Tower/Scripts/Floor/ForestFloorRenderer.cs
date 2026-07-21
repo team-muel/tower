@@ -101,6 +101,7 @@ namespace Tower.Floor
         private CompanionPartySpawner _partySpawner;
         private IReadOnlyList<CompanionEntity> _companions = Array.Empty<CompanionEntity>();
         private EncounterResultPresenter _resultPresenter;
+        private readonly RealtimeCommandBoard _commandBoard = new RealtimeCommandBoard();
 
         public FloorGraph Graph => _graph;
         public FloorExploration Exploration => _exploration;
@@ -117,6 +118,7 @@ namespace Tower.Floor
         public RunEventProgress RunEventProgress => _run?.Progress;
         public RunRewardInventory RewardInventory => _run?.Rewards;
         public EncounterResultPresenter ResultPresenter => _resultPresenter;
+        public RealtimeCommandBoard CommandBoard => _commandBoard;
 
         // Allows the orchestrator's Core->interface adapter to inject a real layout.
         public void SetLayoutSource(IFloorLayoutSource source)
@@ -619,6 +621,7 @@ namespace Tower.Floor
             _exploration.MarkVisited(CurrentNodeId);
             EnsureHud();
             EnsureSlowMo();
+            EnsureCommandInput();
             EnsureCameraReadability();
             TryStartCurrentNodeEncounter();
             string[] commandLineArgs = Environment.GetCommandLineArgs();
@@ -641,6 +644,9 @@ namespace Tower.Floor
 
         private PlayRunHud _hud;
         private RunSlowMo _slowMo;
+        private RunCommandInput _commandInput;
+
+        public bool IsSlowMoCommandWindow => _slowMo != null && _slowMo.CanIssuePreciseOrders;
 
         // T64: Left Shift bullet-time (CombatSpike stack) in the run loop.
         private void EnsureSlowMo()
@@ -655,6 +661,25 @@ namespace Tower.Floor
             {
                 _slowMo = gameObject.AddComponent<RunSlowMo>();
             }
+        }
+
+        private void EnsureCommandInput()
+        {
+            if (!Application.isPlaying)
+            {
+                return;
+            }
+
+            if (_commandInput == null)
+            {
+                _commandInput = gameObject.GetComponent<RunCommandInput>();
+                if (_commandInput == null)
+                {
+                    _commandInput = gameObject.AddComponent<RunCommandInput>();
+                }
+            }
+
+            _commandInput.Configure(this);
         }
 
         // T60: run/combat HUD reads live Core state through the composer.
@@ -1015,7 +1040,8 @@ namespace Tower.Floor
                 spawnCenter,
                 OnEncounterResolved,
                 encounterTriggerRadius,
-                encounterIntroHoldSeconds);
+                encounterIntroHoldSeconds,
+                _commandBoard);
             if (configured.IsFailure)
             {
                 Debug.LogError(configured.Error, this);
