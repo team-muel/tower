@@ -79,6 +79,31 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void ResolveCommandFeel_AmplifyAbility_UsesStatusFeel()
+        {
+            var amplify = AbilityDef.CreateRuntime(
+                "guarded-surge",
+                AbilityTag.Amplify,
+                0,
+                2,
+                AbilityTargetType.Ally,
+                amplificationMultiplier: 1.35f);
+            var catalog = new AbilityFeelCatalog();
+            catalog.RegisterAbility(amplify);
+            var resolver = new AbilityFeelResolver();
+
+            var feel = resolver.ResolveCommandFeel(
+                new UseAbilityCommand("a", "guarded-surge", "b"),
+                catalog);
+
+            Assert.That(feel.PopupStyle, Is.EqualTo(DamagePopupStyle.Heal));
+            Assert.That(feel.HitstopMs, Is.EqualTo(AbilityFeelResolver.Amplify.HitstopMs));
+            Assert.That(feel.ApproachTween, Is.EqualTo(AbilityApproachTween.Projectile));
+
+            Object.DestroyImmediate(amplify);
+        }
+
+        [Test]
         public void ResolveDamageFeel_ExplicitOverride_WinsOverTagDefaults()
         {
             var consume = AbilityDef.CreateRuntime("break", AbilityTag.Consume, 4, 1, AbilityTargetType.Enemy);
@@ -144,6 +169,21 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void PresentationAbilityBuffer_DrainsResolvedStatusActions()
+        {
+            var buffer = new CombatPresentationEventBuffer();
+            buffer.RecordAbility(new UseAbilityCommand("caster", "amplify", "ally"));
+
+            Assert.That(buffer.PendingAbilityCount, Is.EqualTo(1));
+            var drained = buffer.DrainAbilityEvents();
+
+            Assert.That(drained, Has.Count.EqualTo(1));
+            Assert.That(drained[0].SourceUnitId, Is.EqualTo("caster"));
+            Assert.That(drained[0].TargetUnitId, Is.EqualTo("ally"));
+            Assert.That(buffer.PendingAbilityCount, Is.Zero);
+        }
+
+        [Test]
         public void PresentationObserver_ForwardsMetricsAndQueuesDamage()
         {
             var metrics = new CombatMetrics();
@@ -155,6 +195,10 @@ namespace Tower.Tests.EditMode
             Assert.That(metrics.Units["caster"].DamageDealt, Is.EqualTo(4));
             Assert.That(metrics.Units["enemy"].DamageTaken, Is.EqualTo(4));
             Assert.That(observer.Events.PendingDamageCount, Is.EqualTo(1));
+
+            observer.OnAbilityResolved(null, new UseAbilityCommand("caster", "amplify", "ally"));
+
+            Assert.That(observer.Events.PendingAbilityCount, Is.EqualTo(1));
         }
     }
 }

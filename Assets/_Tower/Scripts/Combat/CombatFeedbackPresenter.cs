@@ -22,14 +22,39 @@ namespace Tower.Combat
         public bool TargetDefeated { get; }
     }
 
+    public readonly struct CombatPresentationAbilityEvent
+    {
+        public CombatPresentationAbilityEvent(UseAbilityCommand command)
+        {
+            SourceUnitId = command == null ? string.Empty : command.UnitId ?? string.Empty;
+            TargetUnitId = command == null ? string.Empty : command.TargetUnitId ?? string.Empty;
+            AbilityId = command == null ? string.Empty : command.AbilityId ?? string.Empty;
+        }
+
+        public string SourceUnitId { get; }
+        public string TargetUnitId { get; }
+        public string AbilityId { get; }
+    }
+
     // Keeps Core simulation and Unity presentation separate. The buffer is
     // deterministic and can be drained after each fixed combat step.
     public sealed class CombatPresentationEventBuffer
     {
         private readonly List<CombatPresentationDamageEvent> damageEvents =
             new List<CombatPresentationDamageEvent>();
+        private readonly List<CombatPresentationAbilityEvent> abilityEvents =
+            new List<CombatPresentationAbilityEvent>();
 
         public int PendingDamageCount => damageEvents.Count;
+        public int PendingAbilityCount => abilityEvents.Count;
+
+        public void RecordAbility(UseAbilityCommand command)
+        {
+            if (command != null)
+            {
+                abilityEvents.Add(new CombatPresentationAbilityEvent(command));
+            }
+        }
 
         public void RecordDamage(CombatDamageEvent damageEvent)
         {
@@ -53,9 +78,22 @@ namespace Tower.Combat
             return drained;
         }
 
+        public IReadOnlyList<CombatPresentationAbilityEvent> DrainAbilityEvents()
+        {
+            if (abilityEvents.Count == 0)
+            {
+                return new CombatPresentationAbilityEvent[0];
+            }
+
+            var drained = new List<CombatPresentationAbilityEvent>(abilityEvents);
+            abilityEvents.Clear();
+            return drained;
+        }
+
         public void Clear()
         {
             damageEvents.Clear();
+            abilityEvents.Clear();
         }
     }
 
@@ -82,6 +120,7 @@ namespace Tower.Combat
             if (command != null)
             {
                 Metrics.OnAbilityResolved(state, command);
+                Events.RecordAbility(command);
             }
         }
 
@@ -160,8 +199,51 @@ namespace Tower.Combat
                     damageEvent.Damage,
                     damageEvent.TargetDefeated);
                 ResolvedAbilityFeel feel = feelResolver.ResolveDamageFeel(coreEvent, feelCatalog);
-                CreatePopup(target, damageEvent.Damage, feel);
+                CreatePopup(target, "-" + damageEvent.Damage, feel, feel.PopupStyle);
                 PulseBody(damageEvent.TargetUnitId, target, feel.ShakeIntensity);
+            }
+        }
+
+        // Status-only abilities do not emit a damage event. Keep those actions
+        // readable without duplicating a damage popup for ordinary attacks.
+        public void PresentAbilityResolutions(IReadOnlyList<CombatPresentationAbilityEvent> abilityEvents)
+        {
+            if (abilityEvents == null)
+            {
+                return;
+            }
+
+            for (int index = 0; index < abilityEvents.Count; index++)
+            {
+                CombatPresentationAbilityEvent abilityEvent = abilityEvents[index];
+                AbilityDef ability = feelCatalog.FindAbility(abilityEvent.AbilityId);
+                if (ability == null || (ability.Tag != AbilityTag.Amplify && ability.BasePower > 0))
+                {
+                    continue;
+                }
+
+                string targetUnitId = string.IsNullOrEmpty(abilityEvent.TargetUnitId)
+                    ? abilityEvent.SourceUnitId
+                    : abilityEvent.TargetUnitId;
+                if (!bodies.TryGetValue(targetUnitId, out Transform target) || target == null)
+                {
+                    continue;
+                }
+
+                ResolvedAbilityFeel feel = feelResolver.ResolveCommandFeel(
+                    new UseAbilityCommand(
+                        abilityEvent.SourceUnitId,
+                        abilityEvent.AbilityId,
+                        abilityEvent.TargetUnitId),
+                    feelCatalog);
+                DamagePopupStyle style = ability.Tag == AbilityTag.Amplify
+                    ? DamagePopupStyle.Heal
+                    : DamagePopupStyle.Normal;
+                string label = ability.Tag == AbilityTag.Amplify
+                    ? "AMPLIFY"
+                    : ability.Tag == AbilityTag.Apply ? "MARK" : "ABILITY";
+                CreatePopup(target, label, feel, style);
+                PulseBody(targetUnitId, target, Mathf.Max(0.12f, feel.ShakeIntensity * 0.65f));
             }
         }
 
@@ -196,22 +278,26 @@ namespace Tower.Combat
             UpdatePulses(deltaSeconds);
         }
 
-        private void CreatePopup(Transform target, int damage, ResolvedAbilityFeel feel)
+        private void CreatePopup(
+            Transform target,
+            string label,
+            ResolvedAbilityFeel feel,
+            DamagePopupStyle style)
         {
             GameObject popupObject = new GameObject("DamagePopup");
             popupObject.transform.SetParent(transform, true);
             popupObject.transform.position = target.position + (Vector3.up * 1.8f);
 
             TextMesh text = popupObject.AddComponent<TextMesh>();
-            text.text = "-" + damage;
+            text.text = label ?? string.Empty;
             text.anchor = TextAnchor.MiddleCenter;
             text.alignment = TextAlignment.Center;
-            text.fontSize = feel.PopupStyle == DamagePopupStyle.Normal ? 34 : 42;
-            text.characterSize = feel.PopupStyle == DamagePopupStyle.Normal ? 0.075f : 0.095f;
-            text.fontStyle = feel.PopupStyle == DamagePopupStyle.Crit
+            text.fontSize = style == DamagePopupStyle.Normal ? 34 : 42;
+            text.characterSize = style == DamagePopupStyle.Normal ? 0.075f : 0.095f;
+            text.fontStyle = style == DamagePopupStyle.Crit || style == DamagePopupStyle.Heal
                 ? FontStyle.Bold
                 : FontStyle.Normal;
-            text.color = PopupColor(feel.PopupStyle);
+            text.color = PopupColor(style);
 
             float lifetime = BasePopupLifetime + Mathf.Clamp(feel.HitstopMs / 1000f, 0.05f, 0.2f);
             float rise = feel.ApproachTween == AbilityApproachTween.Projectile

@@ -10,6 +10,9 @@ namespace Tower.Combat
         public static readonly ResolvedAbilityFeel Consume = new ResolvedAbilityFeel(
             120, 0.38f, DamagePopupStyle.Consume, AbilityApproachTween.Lunge, string.Empty);
 
+        public static readonly ResolvedAbilityFeel Amplify = new ResolvedAbilityFeel(
+            85, 0.24f, DamagePopupStyle.Heal, AbilityApproachTween.None, string.Empty);
+
         public ResolvedAbilityFeel ResolveCommandFeel(UseAbilityCommand command, AbilityFeelCatalog catalog)
         {
             if (command == null)
@@ -51,6 +54,16 @@ namespace Tower.Combat
                     DamagePopupStyle.Consume,
                     ability.Range <= 1 ? AbilityApproachTween.Lunge : AbilityApproachTween.Projectile,
                     Consume.SfxCue);
+            }
+
+            if (ability.Tag == AbilityTag.Amplify)
+            {
+                return new ResolvedAbilityFeel(
+                    Amplify.HitstopMs,
+                    Amplify.ShakeIntensity,
+                    Amplify.PopupStyle,
+                    ability.Range > 1 ? AbilityApproachTween.Projectile : Amplify.ApproachTween,
+                    Amplify.SfxCue);
             }
 
             var tween = ability.Range > 1 ? AbilityApproachTween.Projectile : AbilityApproachTween.Lunge;

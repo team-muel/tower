@@ -452,6 +452,13 @@ namespace Tower.Combat
                     feedbackPresenter.Present(presentationObserver.Events.DrainDamageEvents());
                 }
 
+                if (feedbackPresenter != null && presentationObserver != null
+                    && presentationObserver.Events.PendingAbilityCount > 0)
+                {
+                    feedbackPresenter.PresentAbilityResolutions(
+                        presentationObserver.Events.DrainAbilityEvents());
+                }
+
                 SyncWorldViews();
             }
 
