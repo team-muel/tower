@@ -123,6 +123,7 @@ namespace Tower.Floor
         public RealtimeCommandBoard CommandBoard => _commandBoard;
         public CommandTelemetrySnapshot CommandTelemetry => _commandBoard.Telemetry;
         public bool IsResultBlocking => _resultPresenter != null && _resultPresenter.IsVisible;
+        public bool IsTransitionBlocking => _transition != null && _transition.IsVisible;
 
         // Allows the orchestrator's Core->interface adapter to inject a real layout.
         public void SetLayoutSource(IFloorLayoutSource source)
@@ -969,7 +970,8 @@ namespace Tower.Floor
         // Called by a ForkTrailTrigger when the player walks into a fork mouth.
         public bool OnTrailEntered(ForkTrailTrigger trigger)
         {
-            if (_busy || IsEncounterBlocking || IsResultBlocking || trigger == null || _graph == null)
+            if (_busy || IsEncounterBlocking || IsResultBlocking || IsTransitionBlocking
+                || trigger == null || _graph == null)
             {
                 return false;
             }
@@ -984,7 +986,7 @@ namespace Tower.Floor
         // the canonical spatial fallback and selects the fork nearest player X.
         public bool TryEnterNearestForkAtExit()
         {
-            if (_busy || IsEncounterBlocking || IsResultBlocking
+            if (_busy || IsEncounterBlocking || IsResultBlocking || IsTransitionBlocking
                 || playerTransform == null || _graph == null || _layout == null)
             {
                 return false;
@@ -1023,7 +1025,8 @@ namespace Tower.Floor
 
         private bool BeginTraverse(int routeId)
         {
-            if (_busy || IsEncounterBlocking || IsResultBlocking || _graph == null)
+            if (_busy || IsEncounterBlocking || IsResultBlocking || IsTransitionBlocking
+                || _graph == null)
             {
                 return false;
             }
@@ -1252,7 +1255,7 @@ namespace Tower.Floor
         private void HandleVoluntaryRetreat()
         {
             if (!Application.isPlaying || _run == null || _run.IsConquered
-                || IsEncounterBlocking || IsResultBlocking || _busy)
+                || IsEncounterBlocking || IsResultBlocking || IsTransitionBlocking || _busy)
             {
                 _retreatHoldSeconds = 0f;
                 return;
@@ -1277,6 +1280,11 @@ namespace Tower.Floor
         // and tests can drive the lifecycle without the ascend animation.
         public Result<RunOutcome> AdvanceRunFloor()
         {
+            if (IsTransitionBlocking)
+            {
+                return Result<RunOutcome>.Failure("Run transition is still being presented.");
+            }
+
             if (IsResultBlocking)
             {
                 return Result<RunOutcome>.Failure("Encounter result is still being presented.");

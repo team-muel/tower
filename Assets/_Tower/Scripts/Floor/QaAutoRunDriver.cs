@@ -50,6 +50,12 @@ namespace Tower.Floor
                 return; // let the victory result finish before advancing
             }
 
+            if (floorRenderer.IsTransitionBlocking)
+            {
+                settleTimer = 0f;
+                return; // let retreat/conquest transition finish before advancing
+            }
+
             var encounter = floorRenderer.ActiveEncounter;
             if (encounter != null && !encounter.IsResolved && !encounter.IsPlayerDefeated)
             {
