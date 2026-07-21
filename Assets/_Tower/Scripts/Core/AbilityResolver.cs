@@ -74,7 +74,7 @@ namespace Tower.Core
                 return Result.Failure($"Caster does not have ability '{command.AbilityId}'.");
             }
 
-            if (caster.State.RemainingCooldown(ability.Id) > 0)
+            if (caster.State.RemainingCooldownSeconds(ability.Id) > 0f)
             {
                 return Result.Failure($"Ability '{command.AbilityId}' is on cooldown.");
             }
@@ -106,6 +106,8 @@ namespace Tower.Core
 
             switch (ability.Tag)
             {
+                case AbilityTag.None:
+                    return Finish(state, command, ability, ExecuteBasicDamage(state, caster, ability, target.Value, elapsedSeconds));
                 case AbilityTag.Apply:
                     return Finish(state, command, ability, ExecuteApply(state, caster, ability, target.Value, elapsedSeconds));
                 case AbilityTag.Consume:
@@ -115,6 +117,21 @@ namespace Tower.Core
                 default:
                     return Result.Failure("Ability tag is not executable.");
             }
+        }
+
+        private Result ExecuteBasicDamage(
+            CombatState state,
+            CombatantRef caster,
+            AbilityDef ability,
+            TargetContext target,
+            float elapsedSeconds)
+        {
+            if (ability.TargetType != AbilityTargetType.Enemy || target.Unit == null)
+            {
+                return Result.Failure("Untagged abilities currently support enemy damage only.");
+            }
+
+            return DealPowerDamage(state, caster, target.Unit, ability, 1f, elapsedSeconds);
         }
 
         private Result Finish(CombatState state, UseAbilityCommand command, AbilityDef ability, Result result)

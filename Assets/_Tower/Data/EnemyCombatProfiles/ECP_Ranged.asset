@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 69a805ee3be04b1a839937e057ec9be8, type: 3}
+  m_Name: ECP_Ranged
+  m_EditorClassIdentifier: Tower.Combat::Tower.Combat.EnemyCombatProfile
+  kindSlot: ranged
+  characterDefinition: {fileID: 11400000, guid: d3ce36dce3fa4567b059ff6847dcdc4f, type: 2}
+  bodyStyle: 1
+  bodyPrimitive: 0
+  bodyColor: {r: 0.28, g: 0.18, b: 0.42, a: 1}
+  bodyScale: {x: 0.9, y: 0.9, z: 0.9}
+  healthBarHeight: 1.3
+  pillbugTelegraph: 1

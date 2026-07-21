@@ -10,7 +10,7 @@ namespace Tower.Tests.EditMode
     public sealed class DataCatalogTests
     {
         private const string MarksCsv =
-            "id,displayName,durationTurns,stackable\n" +
+            "id,displayName,durationSeconds,stackable\n" +
             "M_Frost,Frost,2,true\n" +
             "M_Burn,Burn,3,true\n";
 
@@ -21,7 +21,7 @@ namespace Tower.Tests.EditMode
             "P_Tempo,Tempo,passive.tempo\n";
 
         private const string AbilitiesCsv =
-            "id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownRounds\n" +
+            "id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownSeconds\n" +
             "A_FrostBolt,Frost Bolt,Apply,M_Frost,5,1,6,1,Enemy,0\n" +
             "A_BurningBrand,Burning Brand,Apply,M_Burn,4,1,5,1,Enemy,0\n" +
             "A_ChillTrap,Chill Trap,Apply,M_Frost,3,2,4,1,Cell,0\n" +
@@ -86,7 +86,7 @@ namespace Tower.Tests.EditMode
 
             var frost = catalog.GetMark("M_Frost");
             Assert.IsNotNull(frost);
-            Assert.AreEqual(2, frost.DurationTurns);
+            Assert.AreEqual(2f, frost.DurationSeconds);
             Assert.IsTrue(frost.Stackable);
 
             var focus = catalog.GetAbility("A_FocusStrike");
@@ -94,6 +94,7 @@ namespace Tower.Tests.EditMode
             Assert.AreEqual(AbilityTag.Amplify, focus.Tag);
             Assert.AreEqual(AbilityTargetType.Enemy, focus.TargetType);
             Assert.AreEqual(1.5f, focus.AmplificationMultiplier, 0.0001f);
+            Assert.AreEqual(1f, focus.CooldownSeconds);
             Assert.AreEqual(string.Empty, focus.TargetMark, "Amplify has empty targetMark");
 
             var returner = catalog.GetCharacter("C_Returner");
@@ -118,7 +119,7 @@ namespace Tower.Tests.EditMode
         {
             var sheets = ValidSheets();
             sheets[DataCatalog.AbilitiesSheet] =
-                "id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownRounds\n" +
+                "id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownSeconds\n" +
                 "A_FrostBolt,Frost Bolt,Freeze,M_Frost,5,1,6,1,Enemy,0\n"; // Freeze is not an AbilityTag
 
             var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
@@ -132,7 +133,7 @@ namespace Tower.Tests.EditMode
         {
             var sheets = ValidSheets();
             sheets[DataCatalog.MarksSheet] =
-                "id,displayName,durationTurns,stackable\n" +
+                "id,displayName,durationSeconds,stackable\n" +
                 ",Frost,2,true\n"; // empty required id
 
             var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
@@ -160,7 +161,7 @@ namespace Tower.Tests.EditMode
         {
             var sheets = ValidSheets();
             sheets[DataCatalog.AbilitiesSheet] =
-                "id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownRounds\n" +
+                "id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownSeconds\n" +
                 "A_FrostBolt,Frost Bolt,Apply,M_Ghost,5,1,6,1,Enemy,0\n"; // M_Ghost not a Mark
 
             var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
@@ -170,16 +171,16 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
-        public void BadInt_IsCaught_ByValidation()
+        public void BadFloat_IsCaught_ByValidation()
         {
             var sheets = ValidSheets();
             sheets[DataCatalog.MarksSheet] =
-                "id,displayName,durationTurns,stackable\n" +
-                "M_Frost,Frost,two,true\n"; // durationTurns not an int
+                "id,displayName,durationSeconds,stackable\n" +
+                "M_Frost,Frost,two,true\n"; // durationSeconds not a float
 
             var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
             StringAssert.Contains("Marks", ex.Message);
-            StringAssert.Contains("durationTurns", ex.Message);
+            StringAssert.Contains("durationSeconds", ex.Message);
         }
 
         [Test]
@@ -187,7 +188,7 @@ namespace Tower.Tests.EditMode
         {
             var sheets = ValidSheets();
             sheets[DataCatalog.MarksSheet] =
-                "id,displayName,durationTurns,stackable\n" +
+                "id,displayName,durationSeconds,stackable\n" +
                 "M_Frost,Frost,2,true\n" +
                 "M_Frost,FrostDup,3,false\n"; // duplicate id
 
@@ -201,11 +202,11 @@ namespace Tower.Tests.EditMode
         {
             var sheets = ValidSheets();
             sheets[DataCatalog.MarksSheet] =
-                "id,displayName,durationTurns,stackable\n" +
-                ",Frost,notint,notbool\n"; // empty id + bad int + bad bool
+                "id,displayName,durationSeconds,stackable\n" +
+                ",Frost,notfloat,notbool\n"; // empty id + bad float + bad bool
 
             var ex = Assert.Throws<DataValidationException>(() => DataCatalog.Load(sheets));
-            StringAssert.Contains("durationTurns", ex.Message);
+            StringAssert.Contains("durationSeconds", ex.Message);
             StringAssert.Contains("stackable", ex.Message);
         }
 

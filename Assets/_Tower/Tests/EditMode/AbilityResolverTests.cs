@@ -36,7 +36,7 @@ namespace Tower.Tests.EditMode
         [Test]
         public void Apply_AppliesMarkAndDealsBasePowerDamage()
         {
-            var mark = Mark("burn", durationTurns: 2);
+            var mark = Mark("burn", durationSeconds: 2f);
             var strike = Ability("strike", AbilityTag.Apply, power: 5, range: 2, mark: mark);
             var caster = Unit("caster", CombatTeam.Player, attack: 3, abilities: new[] { strike });
             var enemy = Unit("enemy", CombatTeam.Enemy, defense: 2);
@@ -54,7 +54,7 @@ namespace Tower.Tests.EditMode
         [Test]
         public void Consume_WithMark_RemovesMarkAndDealsBonusDamage()
         {
-            var mark = Mark("burn", durationTurns: 2);
+            var mark = Mark("burn", durationSeconds: 2f);
             var detonate = Ability("detonate", AbilityTag.Consume, power: 4, range: 2, mark: mark);
             var caster = Unit("caster", CombatTeam.Player, attack: 3, abilities: new[] { detonate });
             var enemy = Unit("enemy", CombatTeam.Enemy, defense: 2);
@@ -105,6 +105,22 @@ namespace Tower.Tests.EditMode
 
             Assert.That(result.IsSuccess, Is.True, result.Error);
             Assert.That(state.GetCombatant("enemy").State.CurrentHp, Is.LessThan(20));
+        }
+
+        [Test]
+        public void UntaggedEnemyAbility_DealsBasicDamage()
+        {
+            var strike = Ability("basic-strike", AbilityTag.None, power: 4, range: 2);
+            var caster = Unit("caster", CombatTeam.Player, attack: 3, abilities: new[] { strike });
+            var enemy = Unit("enemy", CombatTeam.Enemy, defense: 2);
+            Place("caster", 1f, 1f);
+            Place("enemy", 2f, 1f);
+            var state = State(caster, enemy);
+
+            Result result = resolver.Execute(state, new UseAbilityCommand("caster", "basic-strike", "enemy"));
+
+            Assert.That(result.IsSuccess, Is.True, result.Error);
+            Assert.That(state.GetCombatant("enemy").State.CurrentHp, Is.EqualTo(15));
         }
 
         [Test]
@@ -169,7 +185,7 @@ namespace Tower.Tests.EditMode
             AbilityTargetType targetType = AbilityTargetType.Enemy,
             MarkDef mark = null,
             float amplification = 1f,
-            int cooldown = 0)
+            float cooldown = 0f)
         {
             var ability = AbilityDef.CreateRuntime(
                 id,
@@ -179,14 +195,14 @@ namespace Tower.Tests.EditMode
                 targetType,
                 mark,
                 amplification,
-                cooldownRounds: cooldown);
+                cooldownSeconds: cooldown);
             createdObjects.Add(ability);
             return ability;
         }
 
-        private MarkDef Mark(string id, int durationTurns)
+        private MarkDef Mark(string id, float durationSeconds)
         {
-            var mark = MarkDef.CreateRuntime(id, id, durationTurns);
+            var mark = MarkDef.CreateRuntime(id, id, durationSeconds);
             createdObjects.Add(mark);
             return mark;
         }

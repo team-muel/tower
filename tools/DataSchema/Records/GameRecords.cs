@@ -30,7 +30,7 @@ namespace Tower.DataSchema
     public sealed record MarkRecord(
         [ColumnName("id")] string Id,
         [ColumnName("displayName")] string DisplayName,
-        [ColumnName("durationTurns")][Range(1, 99)] int DurationTurns,
+        [ColumnName("durationSeconds")][Range(0.01, 99)] float DurationSeconds,
         [ColumnName("stackable")] bool Stackable);
 
     [StaticDataRecord("Tower_GameData", "Passives")]
@@ -50,7 +50,7 @@ namespace Tower.DataSchema
         [ColumnName("basePower")][Range(0, 9999)] int BasePower,
         [ColumnName("amplificationMultiplier")] float AmplificationMultiplier,
         [ColumnName("targetType")] AbilityTargetType TargetType,
-        [ColumnName("cooldownRounds")][Range(0, 99)] int CooldownRounds);
+        [ColumnName("cooldownSeconds")][Range(0, 99)] float CooldownSeconds);
 
     [StaticDataRecord("Tower_GameData", "Characters")]
     public sealed record CharacterRecord(

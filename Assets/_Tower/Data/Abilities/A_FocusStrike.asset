@@ -21,4 +21,4 @@ MonoBehaviour:
   basePower: 8
   amplificationMultiplier: 1.5
   targetType: 0
-  cooldownRounds: 1
+  cooldownSeconds: 1

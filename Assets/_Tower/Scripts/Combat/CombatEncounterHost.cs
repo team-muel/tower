@@ -1,21 +1,25 @@
 using System.Collections.Generic;
+using System.Linq;
 using Tower.Core;
 using UnityEngine;
 
 namespace Tower.Combat
 {
     /// <summary>
-    /// Owns the one-enemy, one-companion preview. CombatState is deliberately a
-    /// T49 container only: no scene HP/damage mapping is implemented here.
+    /// Owns the isolated preview encounter. T51 replaces the anonymous visual
+    /// follower with real roster-backed companion entities while deliberately
+    /// leaving ability execution and HP mapping for later tasks.
     /// </summary>
     public sealed class CombatEncounterHost : MonoBehaviour
     {
         [SerializeField] private Transform player;
-        [SerializeField] private GameObject companionPrefab;
-        [SerializeField] private RuntimeAnimatorController companionLocomotionController;
+        [SerializeField] private CharacterDef playerDefinition;
+        [SerializeField] private CompanionVisualProfile[] companionProfiles;
         [Header("Provisional spawn positions (metres)")]
         [SerializeField, Min(0f)] private float pillbugSpawnDistance = 8f;
-        [SerializeField, Min(0f)] private float companionSpawnDistance = 2f;
+        [Header("Encounter entry")]
+        [SerializeField, Min(0.01f)] private float encounterTriggerRadius = 7f;
+        [SerializeField, Min(0.01f)] private float encounterIntroHoldSeconds = 0.45f;
         [Header("Provisional pillbug timing and distance")]
         [SerializeField, Min(0f)] private float awarenessRadius = 12f;
         [SerializeField, Min(0f)] private float windupTriggerDistance = 2.5f;
@@ -23,11 +27,6 @@ namespace Tower.Combat
         [SerializeField, Min(0.01f)] private float windupSeconds = 0.9f;
         [SerializeField, Min(0.01f)] private float commitSeconds = 0.25f;
         [SerializeField, Min(0.01f)] private float recoverSeconds = 0.6f;
-        [Header("Provisional companion")]
-        [SerializeField, Min(0f)] private float companionLeashDistance = 4f;
-        [SerializeField, Min(0f)] private float companionMoveSpeed = 3.5f;
-        [SerializeField, Min(0f)] private float companionTurnSpeed = 10f;
-        [SerializeField] private Color companionTint = new Color(0.62f, 0.82f, 1f, 1f);
         [Header("World-space debug presentation")]
         [SerializeField, Min(0f)] private float contactDistance = 0.7f;
         [SerializeField, Min(0f)] private float contactFlashSeconds = 0.12f;
@@ -45,7 +44,8 @@ namespace Tower.Combat
 
         public CombatState CombatState { get; private set; }
         public PillbugBrain Pillbug { get; private set; }
-        public CompanionBody Companion { get; private set; }
+        public IReadOnlyList<CompanionEntity> Companions { get; private set; }
+        public EncounterEngagementController Engagement { get; private set; }
 
         private void Start()
         {
@@ -55,9 +55,10 @@ namespace Tower.Combat
                 player = playerObject == null ? null : playerObject.transform;
             }
 
-            if (player == null || companionPrefab == null)
+            if (player == null || playerDefinition == null
+                || companionProfiles == null || companionProfiles.Length == 0)
             {
-                Debug.LogError("Combat spike requires a player and companion prefab.", this);
+                Debug.LogError("Combat spike requires a player definition and companion profiles.", this);
                 enabled = false;
                 return;
             }
@@ -93,22 +94,43 @@ namespace Tower.Combat
                 forward = Vector3.forward;
             }
 
-            var right = Vector3.Cross(Vector3.up, forward.normalized);
-            var companionObject = Instantiate(companionPrefab, player.position + (right * companionSpawnDistance), Quaternion.identity);
-            companionObject.name = "Companion";
-            var animator = companionObject.GetComponentInChildren<Animator>();
-            if (animator != null && companionLocomotionController != null)
-            {
-                animator.runtimeAnimatorController = companionLocomotionController;
-            }
-
-            Companion = companionObject.AddComponent<CompanionBody>();
             var pillbugObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             pillbugObject.name = "Pillbug";
             pillbugObject.transform.position = player.position + (forward.normalized * pillbugSpawnDistance) + (Vector3.up * 0.5f);
             Pillbug = pillbugObject.AddComponent<PillbugBrain>();
-            Pillbug.Configure(player, Companion.transform, BuildPillbugTuning());
-            Companion.Configure(player, new[] { Pillbug.transform }, new CompanionTuning(companionLeashDistance, companionMoveSpeed, companionTurnSpeed, companionTint));
+
+            var spawner = gameObject.AddComponent<CompanionPartySpawner>();
+            spawner.Configure(player, companionProfiles, new[] { Pillbug.transform });
+            var spawned = spawner.SpawnNow();
+            if (spawned.IsFailure)
+            {
+                Debug.LogError(spawned.Error, this);
+                enabled = false;
+                return;
+            }
+
+            Companions = spawned.Value;
+            Pillbug.Configure(
+                player,
+                Companions.Select(companion => companion.transform).ToArray(),
+                BuildPillbugTuning());
+            var playerMovement = player.GetComponents<Behaviour>()
+                .FirstOrDefault(component => component.GetType().Name == "PlayerIsoController");
+            Engagement = gameObject.AddComponent<EncounterEngagementController>();
+            var engagementResult = Engagement.Configure(
+                player,
+                Pillbug.transform,
+                playerMovement,
+                Pillbug,
+                encounterTriggerRadius,
+                encounterIntroHoldSeconds);
+            if (engagementResult.IsFailure)
+            {
+                Debug.LogError(engagementResult.Error, this);
+                enabled = false;
+                return;
+            }
+
             var slowMoInput = GetComponent<SlowMoInput>();
             if (slowMoInput != null)
             {
@@ -138,31 +160,29 @@ namespace Tower.Combat
 
         private void CreatePreviewCombatState()
         {
-            // These are non-gameplay placeholders required only to hold the
-            // extracted T49 state container. They are never mapped to visuals.
-            var companionAbility = Track(AbilityDef.CreateRuntime("spike-companion-noop", AbilityTag.None, 0, 0, AbilityTargetType.Enemy));
+            var combatants = new List<CombatantRef>();
+            if (!TryAddCombatant(combatants, playerDefinition, CombatTeam.Player))
+            {
+                return;
+            }
+
+            foreach (var profile in companionProfiles)
+            {
+                if (!TryAddCombatant(combatants, profile.CharacterDefinition, CombatTeam.Player))
+                {
+                    return;
+                }
+            }
+
             var pillbugAbility = Track(AbilityDef.CreateRuntime("spike-pillbug-noop", AbilityTag.None, 0, 0, AbilityTargetType.Enemy));
-            var companionDefinition = Track(CharacterDef.CreateRuntime(
-                "spike-companion", "Spike Companion", 1, 0, 0, 1, DispositionType.Protective, new[] { companionAbility }));
             var pillbugDefinition = Track(CharacterDef.CreateRuntime(
                 "spike-pillbug", "Pillbug", 1, 0, 0, 1, DispositionType.Aggressive, new[] { pillbugAbility }));
-            var companionState = CharacterState.Create(companionDefinition, slotCount: 1, assignedAbilities: new[] { companionAbility });
-            var pillbugState = CharacterState.Create(pillbugDefinition, slotCount: 1, assignedAbilities: new[] { pillbugAbility });
-            if (companionState.IsFailure || pillbugState.IsFailure)
+            if (!TryAddCombatant(combatants, pillbugDefinition, CombatTeam.Enemy))
             {
-                Debug.LogError("Combat spike could not create its placeholder CombatState.", this);
                 return;
             }
 
-            var companionCombatant = CombatantRef.Create("spike-companion", CombatTeam.Player, companionState.Value);
-            var pillbugCombatant = CombatantRef.Create("spike-pillbug", CombatTeam.Enemy, pillbugState.Value);
-            if (companionCombatant.IsFailure || pillbugCombatant.IsFailure)
-            {
-                Debug.LogError("Combat spike could not register preview combatants.", this);
-                return;
-            }
-
-            var created = CombatState.Create(new[] { companionCombatant.Value, pillbugCombatant.Value });
+            var created = CombatState.Create(combatants);
             if (created.IsFailure)
             {
                 Debug.LogError(created.Error, this);
@@ -170,6 +190,40 @@ namespace Tower.Combat
             }
 
             CombatState = created.Value;
+        }
+
+        private bool TryAddCombatant(
+            ICollection<CombatantRef> combatants,
+            CharacterDef definition,
+            CombatTeam team)
+        {
+            if (definition == null || definition.DefaultAbilities == null
+                || definition.DefaultAbilities.Length < AbilityLoadout.MinSlots
+                || definition.DefaultAbilities.Length > AbilityLoadout.MaxSlots)
+            {
+                Debug.LogError("Combat preview character requires one to four default abilities.", this);
+                return false;
+            }
+
+            var state = CharacterState.Create(
+                definition,
+                slotCount: definition.DefaultAbilities.Length,
+                assignedAbilities: definition.DefaultAbilities);
+            if (state.IsFailure)
+            {
+                Debug.LogError(state.Error, this);
+                return false;
+            }
+
+            var combatant = CombatantRef.Create(definition.Id, team, state.Value);
+            if (combatant.IsFailure)
+            {
+                Debug.LogError(combatant.Error, this);
+                return false;
+            }
+
+            combatants.Add(combatant.Value);
+            return true;
         }
 
         private T Track<T>(T definition) where T : Object

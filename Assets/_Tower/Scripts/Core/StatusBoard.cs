@@ -3,13 +3,10 @@ using System.Collections.Generic;
 
 namespace Tower.Core
 {
-    // Per-unit mark and amplify bookkeeping with elapsed-time expiry. Duration
-    // values still come from the existing data fields; the old turn scheduler no
-    // longer owns expiry.
+    // Per-unit mark and amplify bookkeeping with elapsed-time expiry.
     public sealed class StatusBoard
     {
-        // v0: the amplified status lasts one round (the round it was applied in).
-        public const int AmplifyDurationRounds = 1;
+        public const float AmplifyDurationSeconds = 1f;
 
         private readonly Dictionary<string, Dictionary<string, MarkInstance>> marksByUnit =
             new Dictionary<string, Dictionary<string, MarkInstance>>(StringComparer.Ordinal);
@@ -34,7 +31,8 @@ namespace Tower.Core
                 return Result.Failure("Mark id is required.");
             }
 
-            if (mark.DurationTurns <= 0)
+            if (mark.DurationSeconds <= 0f || float.IsNaN(mark.DurationSeconds)
+                || float.IsInfinity(mark.DurationSeconds))
             {
                 return Result.Failure("Mark duration must be positive.");
             }
@@ -54,7 +52,7 @@ namespace Tower.Core
             }
 
             // Re-applying always refreshes the duration; stacking only per MarkDef.
-            unitMarks[mark.Id] = new MarkInstance(mark, stacks, elapsedSeconds + mark.DurationTurns);
+            unitMarks[mark.Id] = new MarkInstance(mark, stacks, elapsedSeconds + mark.DurationSeconds);
             return Result.Success();
         }
 
@@ -99,7 +97,7 @@ namespace Tower.Core
             }
 
             // v0: re-applying refreshes the status; it never stacks.
-            amplifyByUnit[unitId] = new AmplifyInstance(multiplier, elapsedSeconds + AmplifyDurationRounds);
+            amplifyByUnit[unitId] = new AmplifyInstance(multiplier, elapsedSeconds + AmplifyDurationSeconds);
             return Result.Success();
         }
 
@@ -191,11 +189,6 @@ namespace Tower.Core
                     amplifyByUnit.Remove(unitId);
                 }
             }
-        }
-
-        public void OnRoundAdvanced(int currentRound)
-        {
-            PruneExpired(currentRound);
         }
 
         private readonly struct MarkInstance

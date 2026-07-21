@@ -207,7 +207,7 @@ namespace Tower.Data
                 string rowRef = RowRef(r);
                 string id = Required(MarksSheet, rowRef, "id", row, errors);
                 string displayName = Required(MarksSheet, rowRef, "displayName", row, errors);
-                int duration = ParseInt(MarksSheet, rowRef, "durationTurns", row, errors);
+                float duration = ParseFloat(MarksSheet, rowRef, "durationSeconds", row, errors);
                 bool stackable = ParseBool(MarksSheet, rowRef, "stackable", row, errors);
 
                 if (id == null) continue;
@@ -268,7 +268,7 @@ namespace Tower.Data
                 float amp = ParseFloat(AbilitiesSheet, rowRef, "amplificationMultiplier", row, errors);
                 AbilityTargetType targetType =
                     ParseEnum<AbilityTargetType>(AbilitiesSheet, rowRef, "targetType", row, errors);
-                int cooldown = ParseInt(AbilitiesSheet, rowRef, "cooldownRounds", row, errors);
+                float cooldown = ParseFloat(AbilitiesSheet, rowRef, "cooldownSeconds", row, errors);
 
                 if (id == null) continue;
                 if (outMap.ContainsKey(id))

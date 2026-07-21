@@ -14,5 +14,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: Tower.Core::Tower.Core.MarkDef
   id: M_Frost
   displayName: Frost
-  durationTurns: 2
+  durationSeconds: 2
   stackable: 1

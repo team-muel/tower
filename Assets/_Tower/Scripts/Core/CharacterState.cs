@@ -6,7 +6,7 @@ namespace Tower.Core
 {
     public sealed class CharacterState
     {
-        private readonly Dictionary<string, int> abilityCooldowns;
+        private readonly Dictionary<string, float> abilityCooldowns;
 
         private CharacterState(
             CharacterDef definition,
@@ -14,7 +14,7 @@ namespace Tower.Core
             int deathCount,
             int speedModifier,
             AbilityLoadout loadout,
-            Dictionary<string, int> abilityCooldowns)
+            Dictionary<string, float> abilityCooldowns)
         {
             Definition = definition;
             CurrentHp = currentHp;
@@ -31,9 +31,9 @@ namespace Tower.Core
         public int EffectiveSpeed => Math.Max(0, Definition.Speed + SpeedModifier);
         public AbilityLoadout Loadout { get; }
 
-        // T18: remaining cooldown rounds per ability id. Combat-scoped state;
+        // Remaining cooldown seconds per ability id. Combat-scoped state;
         // it is not persisted into expedition saves.
-        public IReadOnlyDictionary<string, int> AbilityCooldowns => abilityCooldowns;
+        public IReadOnlyDictionary<string, float> AbilityCooldowns => abilityCooldowns;
 
         public static Result<CharacterState> Create(
             CharacterDef definition,
@@ -42,7 +42,7 @@ namespace Tower.Core
             int speedModifier = 0,
             int slotCount = AbilityLoadout.DefaultSlots,
             AbilityDef[] assignedAbilities = null,
-            IReadOnlyDictionary<string, int> abilityCooldowns = null)
+            IReadOnlyDictionary<string, float> abilityCooldowns = null)
         {
             if (definition == null)
             {
@@ -72,7 +72,7 @@ namespace Tower.Core
                 return Result<CharacterState>.Failure(loadout.Error);
             }
 
-            var cooldowns = new Dictionary<string, int>(StringComparer.Ordinal);
+            var cooldowns = new Dictionary<string, float>(StringComparer.Ordinal);
             if (abilityCooldowns != null)
             {
                 foreach (var entry in abilityCooldowns)
@@ -82,12 +82,12 @@ namespace Tower.Core
                         return Result<CharacterState>.Failure("Cooldown ability id is required.");
                     }
 
-                    if (entry.Value < 0)
+                    if (entry.Value < 0f || float.IsNaN(entry.Value) || float.IsInfinity(entry.Value))
                     {
-                        return Result<CharacterState>.Failure("Cooldown rounds cannot be negative.");
+                        return Result<CharacterState>.Failure("Cooldown seconds must be finite and non-negative.");
                     }
 
-                    if (entry.Value > 0)
+                    if (entry.Value > 0f)
                     {
                         cooldowns[entry.Key] = entry.Value;
                     }
@@ -100,61 +100,67 @@ namespace Tower.Core
 
         // T18: remaining cooldown for an ability; zero when the ability is
         // ready (or unknown).
-        public int RemainingCooldown(string abilityId)
+        public float RemainingCooldownSeconds(string abilityId)
         {
             return !string.IsNullOrEmpty(abilityId) && abilityCooldowns.TryGetValue(abilityId, out var remaining)
                 ? remaining
-                : 0;
+                : 0f;
         }
 
         // T18: records a cooldown after a successful ability use. Zero clears
         // any tracked cooldown for the ability.
-        public Result<CharacterState> WithAbilityCooldown(string abilityId, int cooldownRounds)
+        public Result<CharacterState> WithAbilityCooldown(string abilityId, float cooldownSeconds)
         {
             if (string.IsNullOrWhiteSpace(abilityId))
             {
                 return Result<CharacterState>.Failure("Ability id is required.");
             }
 
-            if (cooldownRounds < 0)
+            if (cooldownSeconds < 0f || float.IsNaN(cooldownSeconds) || float.IsInfinity(cooldownSeconds))
             {
-                return Result<CharacterState>.Failure("Cooldown rounds cannot be negative.");
+                return Result<CharacterState>.Failure("Cooldown seconds must be finite and non-negative.");
             }
 
-            var updated = new Dictionary<string, int>(abilityCooldowns, StringComparer.Ordinal);
-            if (cooldownRounds == 0)
+            var updated = new Dictionary<string, float>(abilityCooldowns, StringComparer.Ordinal);
+            if (cooldownSeconds == 0f)
             {
                 updated.Remove(abilityId);
             }
             else
             {
-                updated[abilityId] = cooldownRounds;
+                updated[abilityId] = cooldownSeconds;
             }
 
             return Result<CharacterState>.Success(
                 new CharacterState(Definition, CurrentHp, DeathCount, SpeedModifier, Loadout, updated));
         }
 
-        // T18: round-boundary tick — every tracked cooldown drops by one and
-        // expired entries are removed. Returns the same instance when there is
-        // nothing to tick.
-        public CharacterState WithCooldownsTicked()
+        // Advances every tracked cooldown by real elapsed time. Expired entries
+        // are removed; zero delta or an empty map returns the same instance.
+        public Result<CharacterState> WithCooldownsAdvanced(float deltaSeconds)
         {
-            if (abilityCooldowns.Count == 0)
+            if (deltaSeconds < 0f || float.IsNaN(deltaSeconds) || float.IsInfinity(deltaSeconds))
             {
-                return this;
+                return Result<CharacterState>.Failure("Cooldown delta must be finite and non-negative.");
             }
 
-            var updated = new Dictionary<string, int>(StringComparer.Ordinal);
+            if (abilityCooldowns.Count == 0 || deltaSeconds == 0f)
+            {
+                return Result<CharacterState>.Success(this);
+            }
+
+            var updated = new Dictionary<string, float>(StringComparer.Ordinal);
             foreach (var entry in abilityCooldowns)
             {
-                if (entry.Value > 1)
+                float remaining = entry.Value - deltaSeconds;
+                if (remaining > 0.0001f)
                 {
-                    updated[entry.Key] = entry.Value - 1;
+                    updated[entry.Key] = remaining;
                 }
             }
 
-            return new CharacterState(Definition, CurrentHp, DeathCount, SpeedModifier, Loadout, updated);
+            return Result<CharacterState>.Success(
+                new CharacterState(Definition, CurrentHp, DeathCount, SpeedModifier, Loadout, updated));
         }
     }
 }

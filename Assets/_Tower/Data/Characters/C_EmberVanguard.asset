@@ -24,3 +24,6 @@ MonoBehaviour:
   - {fileID: 11400000, guid: eeaad8a656852e9478f93ebb9952066f, type: 2}
   - {fileID: 11400000, guid: d7175e4007cd3ab40bbf9bd99b695160, type: 2}
   isReturner: 0
+  chainLocked: 0
+  isPreset: 1
+  factionId: 1

@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b82e23153448bfa4da68fd3a64c2c979, type: 3}
+  m_Name: CV_WardBearer
+  m_EditorClassIdentifier: Tower.Combat::Tower.Combat.CompanionVisualProfile
+  characterDefinition: {fileID: 11400000, guid: a3ef459689c0aec42ba29c3898a5b34c, type: 2}
+  bodyPrefab: {fileID: 5246398437243491837, guid: 76539157b17b74b44bef7f3708e75881, type: 3}
+  bodyMaterial: {fileID: 2100000, guid: aa3c464762aff6543aa375af721718d2, type: 2}
+  locomotionController: {fileID: 9100000, guid: e3edabcfa4bc1bd4eb50c08190d4a100, type: 2}
+  accentColor: {r: 0.2, g: 0.48, b: 0.72, a: 1}
+  formationOffset: {x: 1.55, y: 0, z: -1.55}
+  arriveDistance: 0.2
+  moveSpeed: 3.5
+  turnSpeed: 540

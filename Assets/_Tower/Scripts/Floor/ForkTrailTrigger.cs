@@ -30,8 +30,7 @@ namespace Tower.Floor
         {
             if (_consumed || _renderer == null) return;
             if (!_renderer.IsPlayer(other)) return;
-            _consumed = true;
-            _renderer.OnTrailEntered(this);
+            _consumed = _renderer.OnTrailEntered(this);
         }
 
         private void OnTriggerEnter(Collider other)

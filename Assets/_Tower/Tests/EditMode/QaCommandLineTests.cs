@@ -56,5 +56,12 @@ namespace Tower.Tests.EditMode
             Assert.That(QaCommandLine.HasDevCameraFlag(new[] { "Tower.exe" }), Is.False);
             Assert.That(QaCommandLine.HasDevCameraFlag(null), Is.False);
         }
+
+        [Test]
+        public void HasAutoEncounterFlag_RequiresExplicitGateFlag()
+        {
+            Assert.That(QaCommandLine.HasAutoEncounterFlag(new[] { "Tower.exe", "-qaAutoEncounter" }), Is.True);
+            Assert.That(QaCommandLine.HasAutoEncounterFlag(new[] { "Tower.exe" }), Is.False);
+        }
     }
 }

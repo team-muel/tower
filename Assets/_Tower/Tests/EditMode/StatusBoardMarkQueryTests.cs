@@ -32,8 +32,8 @@ namespace Tower.Tests.EditMode
         [Test]
         public void GetActiveMarkIds_ReturnsSortedActiveIds()
         {
-            statusBoard.ApplyMark("unit", CreateMark("weaken", durationTurns: 2, stackable: false), 1);
-            statusBoard.ApplyMark("unit", CreateMark("burn", durationTurns: 2, stackable: true), 1);
+            statusBoard.ApplyMark("unit", CreateMark("weaken", durationSeconds: 2f, stackable: false), 1);
+            statusBoard.ApplyMark("unit", CreateMark("burn", durationSeconds: 2f, stackable: true), 1);
 
             var ids = statusBoard.GetActiveMarkIds("unit", 1);
 
@@ -43,7 +43,7 @@ namespace Tower.Tests.EditMode
         [Test]
         public void GetActiveMarkIds_ExcludesExpiredMarks()
         {
-            statusBoard.ApplyMark("unit", CreateMark("burn", durationTurns: 1, stackable: false), 1);
+            statusBoard.ApplyMark("unit", CreateMark("burn", durationSeconds: 1f, stackable: false), 1);
 
             Assert.That(statusBoard.GetActiveMarkIds("unit", 1), Is.EqualTo(new[] { "burn" }));
             Assert.That(statusBoard.GetActiveMarkIds("unit", 2), Is.Empty);
@@ -56,13 +56,13 @@ namespace Tower.Tests.EditMode
             Assert.That(statusBoard.GetActiveMarkIds(null, 1), Is.Empty);
         }
 
-        private MarkDef CreateMark(string id, int durationTurns, bool stackable)
+        private MarkDef CreateMark(string id, float durationSeconds, bool stackable)
         {
             var mark = ScriptableObject.CreateInstance<MarkDef>();
             createdObjects.Add(mark);
             SetPrivateField(mark, "id", id);
             SetPrivateField(mark, "displayName", id);
-            SetPrivateField(mark, "durationTurns", durationTurns);
+            SetPrivateField(mark, "durationSeconds", durationSeconds);
             SetPrivateField(mark, "stackable", stackable);
             return mark;
         }

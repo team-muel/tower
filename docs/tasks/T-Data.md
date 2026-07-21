@@ -18,13 +18,13 @@ CSV(추출 결과) → Unity 런타임 `DataCatalog`(id로 조회) + **로드타
 5. **EditMode 테스트**: 정상 로드 성공(개수 검증), 그리고 bad enum/빈 필수/깨진 FK 각각이 검증에서 걸리는지. 기존 360 유지.
 
 ## 데이터 (정본 — 이대로 CSV 생성)
-Marks(id,displayName,durationTurns,stackable):
+Marks(id,displayName,durationSeconds,stackable):
 `M_Frost,Frost,2,true` / `M_Burn,Burn,3,true`
 
 Passives(id,displayName,effectHookKey):
 `P_Reckless,Reckless,passive.reckless` / `P_Guardian,Guardian,passive.guardian` / `P_Tempo,Tempo,passive.tempo`
 
-Abilities(id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownRounds):
+Abilities(id,displayName,tag,targetMark,range,cost,basePower,amplificationMultiplier,targetType,cooldownSeconds):
 ```
 A_FrostBolt,Frost Bolt,Apply,M_Frost,5,1,6,1,Enemy,0
 A_BurningBrand,Burning Brand,Apply,M_Burn,4,1,5,1,Enemy,0

@@ -49,15 +49,25 @@ namespace Tower.Core
 
         public Result<AiPlan> ChooseAction(CombatState state, string unitId)
         {
-            return ChooseAction(state, unitId, false, null);
+            return ChooseAction(state, unitId, false, null, true);
+        }
+
+        public Result<AiPlan> ChooseActionWithoutMovement(CombatState state, string unitId)
+        {
+            return ChooseAction(state, unitId, false, null, false);
         }
 
         public Result<AiPlan> ChoosePendingAction(CombatState state, string unitId, string pendingAbilityId)
         {
-            return ChooseAction(state, unitId, true, pendingAbilityId);
+            return ChooseAction(state, unitId, true, pendingAbilityId, true);
         }
 
-        private Result<AiPlan> ChooseAction(CombatState state, string unitId, bool restrictToPending, string pendingAbilityId)
+        private Result<AiPlan> ChooseAction(
+            CombatState state,
+            string unitId,
+            bool restrictToPending,
+            string pendingAbilityId,
+            bool allowMovement)
         {
             if (state == null)
             {
@@ -92,7 +102,9 @@ namespace Tower.Core
             var elapsedSeconds = state.ElapsedSeconds;
 
             var context = BuildContext(state, actor);
-            var candidates = battlefield.GetMoveCandidates(unitId, actorPosition.Value, movementBudget);
+            IReadOnlyList<BattleMoveCandidate> candidates = allowMovement
+                ? battlefield.GetMoveCandidates(unitId, actorPosition.Value, movementBudget)
+                : new[] { new BattleMoveCandidate(actorPosition.Value, 0f) };
             var preferredRange = ComputePreferredRange(actor);
 
             AiPlan best = null;
@@ -112,13 +124,14 @@ namespace Tower.Core
 
                 foreach (var ability in actor.State.Loadout.Abilities)
                 {
-                    if (ability == null || ability.Tag == AbilityTag.None)
+                    if (ability == null || (ability.Tag == AbilityTag.None
+                        && (ability.BasePower <= 0 || ability.TargetType != AbilityTargetType.Enemy)))
                     {
                         continue;
                     }
 
                     // T18: abilities on cooldown are never candidates.
-                    if (actor.State.RemainingCooldown(ability.Id) > 0)
+                    if (actor.State.RemainingCooldownSeconds(ability.Id) > 0f)
                     {
                         continue;
                     }

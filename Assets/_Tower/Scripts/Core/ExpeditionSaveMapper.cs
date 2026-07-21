@@ -14,7 +14,8 @@ namespace Tower.Core
     {
         public static Result<SaveGame> ToSave(
             ExpeditionState state,
-            IEnumerable<AnchorRuntimeSnapshot> anchorStates = null)
+            IEnumerable<AnchorRuntimeSnapshot> anchorStates = null,
+            RunEventProgress runEventProgress = null)
         {
             if (state == null)
             {
@@ -36,7 +37,8 @@ namespace Tower.Core
                 hiddenMissingIds = state.HiddenMissingIds.ToArray(),
                 fallenIds = state.FallenIds.ToArray(),
                 shortcutStairways = state.ShortcutStairways.OrderBy(index => index).ToArray(),
-                anchorStates = CopyAnchorSnapshots(anchorStates).ToArray()
+                anchorStates = CopyAnchorSnapshots(anchorStates).ToArray(),
+                runEventProgress = runEventProgress?.Capture()
             };
             return Result<SaveGame>.Success(save);
         }
@@ -108,6 +110,26 @@ namespace Tower.Core
             }
 
             return Result<InteractionRuntimeStore>.Success(store);
+        }
+
+        public static Result<RunEventProgress> ToRunEventProgress(SaveGame save)
+        {
+            if (save == null)
+            {
+                return Result<RunEventProgress>.Failure("Save game is required.");
+            }
+
+            if (save.version != SaveGame.CurrentVersion)
+            {
+                return Result<RunEventProgress>.Failure($"Unsupported save version {save.version}.");
+            }
+
+            if (save.runEventProgress == null)
+            {
+                return Result<RunEventProgress>.Failure("Save game has no run event progress.");
+            }
+
+            return RunEventProgress.Restore(save.runEventProgress);
         }
 
         private static SaveMember ToSaveMember(ExpeditionMember member)

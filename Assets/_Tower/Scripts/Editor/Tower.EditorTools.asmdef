@@ -4,7 +4,8 @@
   "references": [
     "Tower.Core",
     "Tower.Combat",
-    "Tower.Floor"
+    "Tower.Floor",
+    "ithappy.Creative_Characters_FREE.Editor"
   ],
   "includePlatforms": [
     "Editor"

@@ -24,13 +24,13 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
-        public void RemainingCooldown_DefaultsToZero()
+        public void RemainingCooldownSeconds_DefaultsToZero()
         {
             var state = CreateState("unit");
 
-            Assert.That(state.RemainingCooldown("unit-a"), Is.EqualTo(0));
-            Assert.That(state.RemainingCooldown("unknown"), Is.EqualTo(0));
-            Assert.That(state.RemainingCooldown(null), Is.EqualTo(0));
+            Assert.That(state.RemainingCooldownSeconds("unit-a"), Is.EqualTo(0f));
+            Assert.That(state.RemainingCooldownSeconds("unknown"), Is.EqualTo(0f));
+            Assert.That(state.RemainingCooldownSeconds(null), Is.EqualTo(0f));
         }
 
         [Test]
@@ -38,11 +38,11 @@ namespace Tower.Tests.EditMode
         {
             var state = CreateState("unit");
 
-            var cooled = state.WithAbilityCooldown("unit-a", 2);
+            var cooled = state.WithAbilityCooldown("unit-a", 2.5f);
 
             Assert.That(cooled.IsSuccess, Is.True, cooled.Error);
-            Assert.That(cooled.Value.RemainingCooldown("unit-a"), Is.EqualTo(2));
-            Assert.That(state.RemainingCooldown("unit-a"), Is.EqualTo(0), "The original state must stay untouched.");
+            Assert.That(cooled.Value.RemainingCooldownSeconds("unit-a"), Is.EqualTo(2.5f));
+            Assert.That(state.RemainingCooldownSeconds("unit-a"), Is.EqualTo(0f), "The original state must stay untouched.");
             Assert.That(cooled.Value.CurrentHp, Is.EqualTo(state.CurrentHp));
             Assert.That(cooled.Value.Loadout, Is.SameAs(state.Loadout));
         }
@@ -50,12 +50,12 @@ namespace Tower.Tests.EditMode
         [Test]
         public void WithAbilityCooldown_ZeroClearsTheEntry()
         {
-            var state = CreateState("unit").WithAbilityCooldown("unit-a", 2).Value;
+            var state = CreateState("unit").WithAbilityCooldown("unit-a", 2f).Value;
 
-            var cleared = state.WithAbilityCooldown("unit-a", 0);
+            var cleared = state.WithAbilityCooldown("unit-a", 0f);
 
             Assert.That(cleared.IsSuccess, Is.True, cleared.Error);
-            Assert.That(cleared.Value.RemainingCooldown("unit-a"), Is.EqualTo(0));
+            Assert.That(cleared.Value.RemainingCooldownSeconds("unit-a"), Is.EqualTo(0f));
             Assert.That(cleared.Value.AbilityCooldowns, Is.Empty);
         }
 
@@ -64,50 +64,58 @@ namespace Tower.Tests.EditMode
         {
             var state = CreateState("unit");
 
-            Assert.That(state.WithAbilityCooldown(null, 1).IsFailure, Is.True);
-            Assert.That(state.WithAbilityCooldown(" ", 1).IsFailure, Is.True);
-            Assert.That(state.WithAbilityCooldown("unit-a", -1).IsFailure, Is.True);
+            Assert.That(state.WithAbilityCooldown(null, 1f).IsFailure, Is.True);
+            Assert.That(state.WithAbilityCooldown(" ", 1f).IsFailure, Is.True);
+            Assert.That(state.WithAbilityCooldown("unit-a", -1f).IsFailure, Is.True);
+            Assert.That(state.WithAbilityCooldown("unit-a", float.NaN).IsFailure, Is.True);
+            Assert.That(state.WithAbilityCooldown("unit-a", float.PositiveInfinity).IsFailure, Is.True);
         }
 
         [Test]
-        public void WithCooldownsTicked_DecrementsAndExpires()
+        public void WithCooldownsAdvanced_DecrementsByFractionalSecondsAndExpires()
         {
-            var state = CreateState("unit").WithAbilityCooldown("unit-a", 2).Value;
+            var state = CreateState("unit").WithAbilityCooldown("unit-a", 2f).Value;
 
-            var afterOneRound = state.WithCooldownsTicked();
-            Assert.That(afterOneRound.RemainingCooldown("unit-a"), Is.EqualTo(1));
+            var afterFraction = state.WithCooldownsAdvanced(0.75f);
+            Assert.That(afterFraction.IsSuccess, Is.True, afterFraction.Error);
+            Assert.That(afterFraction.Value.RemainingCooldownSeconds("unit-a"), Is.EqualTo(1.25f).Within(0.0001f));
 
-            var afterTwoRounds = afterOneRound.WithCooldownsTicked();
-            Assert.That(afterTwoRounds.RemainingCooldown("unit-a"), Is.EqualTo(0));
-            Assert.That(afterTwoRounds.AbilityCooldowns, Is.Empty, "Expired cooldowns must be removed.");
+            var expired = afterFraction.Value.WithCooldownsAdvanced(1.25f);
+            Assert.That(expired.IsSuccess, Is.True, expired.Error);
+            Assert.That(expired.Value.RemainingCooldownSeconds("unit-a"), Is.EqualTo(0f));
+            Assert.That(expired.Value.AbilityCooldowns, Is.Empty, "Expired cooldowns must be removed.");
         }
 
         [Test]
-        public void WithCooldownsTicked_ReturnsSameInstanceWhenNothingIsCooling()
+        public void WithCooldownsAdvanced_ValidatesDeltaAndReturnsSameInstanceForNoWork()
         {
             var state = CreateState("unit");
 
-            Assert.That(state.WithCooldownsTicked(), Is.SameAs(state));
+            Assert.That(state.WithCooldownsAdvanced(0.5f).Value, Is.SameAs(state));
+            Assert.That(state.WithCooldownsAdvanced(0f).Value, Is.SameAs(state));
+            Assert.That(state.WithCooldownsAdvanced(-0.1f).IsFailure, Is.True);
+            Assert.That(state.WithCooldownsAdvanced(float.NaN).IsFailure, Is.True);
+            Assert.That(state.WithCooldownsAdvanced(float.PositiveInfinity).IsFailure, Is.True);
         }
 
         [Test]
         public void Create_PreservesProvidedCooldowns_AndDropsExpiredEntries()
         {
-            var cooldowns = new Dictionary<string, int>
+            var cooldowns = new Dictionary<string, float>
             {
-                { "unit-a", 2 },
-                { "unit-b", 0 }
+                { "unit-a", 2.5f },
+                { "unit-b", 0f }
             };
 
             var state = CreateState("unit", cooldowns);
 
-            Assert.That(state.RemainingCooldown("unit-a"), Is.EqualTo(2));
-            Assert.That(state.RemainingCooldown("unit-b"), Is.EqualTo(0));
+            Assert.That(state.RemainingCooldownSeconds("unit-a"), Is.EqualTo(2.5f));
+            Assert.That(state.RemainingCooldownSeconds("unit-b"), Is.EqualTo(0f));
             Assert.That(state.AbilityCooldowns.Count, Is.EqualTo(1));
         }
 
         [Test]
-        public void Create_RejectsNegativeCooldowns()
+        public void Create_RejectsInvalidCooldowns()
         {
             var definition = CreateDefinition("unit");
             var abilities = CreateAbilities("unit");
@@ -116,12 +124,20 @@ namespace Tower.Tests.EditMode
                 definition,
                 slotCount: abilities.Length,
                 assignedAbilities: abilities,
-                abilityCooldowns: new Dictionary<string, int> { { "unit-a", -1 } });
+                abilityCooldowns: new Dictionary<string, float> { { "unit-a", -1f } });
+
+            Assert.That(state.IsFailure, Is.True);
+
+            state = CharacterState.Create(
+                definition,
+                slotCount: abilities.Length,
+                assignedAbilities: abilities,
+                abilityCooldowns: new Dictionary<string, float> { { "unit-a", float.NaN } });
 
             Assert.That(state.IsFailure, Is.True);
         }
 
-        private CharacterState CreateState(string id, IReadOnlyDictionary<string, int> cooldowns = null)
+        private CharacterState CreateState(string id, IReadOnlyDictionary<string, float> cooldowns = null)
         {
             var definition = CreateDefinition(id);
             var abilities = CreateAbilities(id);

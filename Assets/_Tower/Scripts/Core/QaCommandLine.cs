@@ -8,6 +8,9 @@ namespace Tower.Core
     {
         public const string QaPortArg = "-qaPort";
         public const string DevCameraArg = "-devcam";
+        public const string AutoEncounterArg = "-qaAutoEncounter";
+        public const string FreshRunArg = "-qaFreshRun";
+        public const string AutoRunArg = "-qaAutoRun";
         public const int MinPort = 1;
         public const int MaxPort = 65535;
 
@@ -43,6 +46,24 @@ namespace Tower.Core
         public static bool HasDevCameraFlag(string[] args)
         {
             return HasFlag(args, DevCameraArg);
+        }
+
+        public static bool HasAutoEncounterFlag(string[] args)
+        {
+            return HasFlag(args, AutoEncounterArg);
+        }
+
+        // QA-only: ignore and delete any persisted run save before starting.
+        public static bool HasFreshRunFlag(string[] args)
+        {
+            return HasFlag(args, FreshRunArg);
+        }
+
+        // QA-only: T62 completion harness — auto-plays the whole run
+        // (enter each scheduled encounter, advance after resolution).
+        public static bool HasAutoRunFlag(string[] args)
+        {
+            return HasFlag(args, AutoRunArg);
         }
 
         public static bool HasFlag(string[] args, string flag)

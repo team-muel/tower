@@ -20,7 +20,7 @@ namespace Tower.Tests.EditMode
                 Assert.IsNotNull(root);
                 Assert.IsNotNull(renderer.Graph);
 
-                LinearStubLayout layout = new LinearStubLayout(renderer.Graph);
+                IFloorLayoutSource layout = renderer.Layout; // T59: floors stretch per-seed; compare against the actual layout
                 int expectedNodes = renderer.Graph.Nodes.Count;
                 int expectedTrees = 0;
                 int expectedRocks = 0;
