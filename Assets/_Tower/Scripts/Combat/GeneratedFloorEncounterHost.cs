@@ -613,6 +613,80 @@ namespace Tower.Combat
                 CombatState.ElapsedSeconds);
         }
 
+        // T69: the player can choose a concrete loadout slot while bullet-time
+        // is active. Target selection stays deliberately lightweight for the
+        // first direct-input lane: offensive abilities use the nearest enemy,
+        // cell abilities use that enemy's occupied point, and ally abilities
+        // target the player. Movement remains external, so an order that is
+        // out of range can still fall back safely through the Core driver.
+        public Result IssuePlayerPreciseOrder(int abilityIndex, bool commandWindowActive)
+        {
+            if (commandBoard == null || CombatState == null || battlefield == null)
+            {
+                return Result.Failure("Combat command runtime is not ready.");
+            }
+
+            CombatantRef playerCombatant = CombatState.GetCombatant(playerUnitId);
+            if (playerCombatant == null || !CombatState.IsAlive(playerUnitId))
+            {
+                return Result.Failure("Player is not a living combatant.");
+            }
+
+            if (abilityIndex < 0 || abilityIndex >= playerCombatant.State.Loadout.Abilities.Count)
+            {
+                return Result.Failure("Player ability slot is out of range.");
+            }
+
+            AbilityDef ability = playerCombatant.State.Loadout.Abilities[abilityIndex];
+            if (ability == null)
+            {
+                return Result.Failure("Player ability slot is empty.");
+            }
+
+            if (playerCombatant.State.RemainingCooldownSeconds(ability.Id) > 0f)
+            {
+                return Result.Failure($"Ability '{ability.DisplayName}' is on cooldown.");
+            }
+
+            if (ability.Tag == AbilityTag.None && ability.TargetType != AbilityTargetType.Enemy)
+            {
+                return Result.Failure("Untagged player abilities must target an enemy.");
+            }
+
+            if (ability.Tag == AbilityTag.Amplify && ability.TargetType != AbilityTargetType.Ally)
+            {
+                return Result.Failure("Amplify player abilities must target an ally.");
+            }
+
+            string targetId;
+            BattlePos? targetPoint = null;
+            if (ability.TargetType == AbilityTargetType.Ally)
+            {
+                targetId = playerUnitId;
+            }
+            else
+            {
+                targetId = NearestLivingEnemy(playerUnitId);
+                if (string.IsNullOrEmpty(targetId))
+                {
+                    return Result.Failure("No living enemy is available for the player ability.");
+                }
+
+                if (ability.TargetType == AbilityTargetType.Cell)
+                {
+                    targetPoint = battlefield.FindOccupant(targetId);
+                }
+            }
+
+            return commandBoard.IssuePreciseOrder(
+                playerUnitId,
+                ability.Id,
+                targetId,
+                targetPoint,
+                commandWindowActive,
+                CombatState.ElapsedSeconds);
+        }
+
         public Result SetFocusStanceOnNearestEnemy(string companionUnitId)
         {
             if (commandBoard == null || CombatState == null || battlefield == null)
