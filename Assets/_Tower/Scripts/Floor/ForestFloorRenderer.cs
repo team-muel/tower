@@ -190,6 +190,11 @@ namespace Tower.Floor
                 return "loading";
             }
 
+            if (IsTransitionBlocking)
+            {
+                return "transition";
+            }
+
             if (_run.IsConquered)
             {
                 return "conquered";

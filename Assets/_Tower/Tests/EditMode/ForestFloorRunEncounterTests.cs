@@ -260,6 +260,31 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void QaPhase_ReportsTransitionUntilBannerExpires()
+        {
+            GameObject host = new GameObject("forest-transition-qa");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                renderer.Rebuild();
+                RunTransitionPresenter transition = host.AddComponent<RunTransitionPresenter>();
+                SetPrivateField(renderer, "_transition", transition);
+                Assert.That(transition.Show("후퇴", "전환 중", 2f).IsSuccess, Is.True);
+
+                QaStateSnapshot duringTransition = CaptureQaState(renderer);
+                Assert.That(duringTransition.expedition.phase, Is.EqualTo("transition"));
+
+                transition.Tick(2.1f);
+                QaStateSnapshot afterTransition = CaptureQaState(renderer);
+                Assert.That(afterTransition.expedition.phase, Is.EqualTo("exploration"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
+
+        [Test]
         public void RunLifecycle_DefeatRetreatsAndThirdDefeatRegresses()
         {
             GameObject host = new GameObject("forest-run-defeat");
@@ -310,6 +335,18 @@ namespace Tower.Tests.EditMode
                 BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.That(method, Is.Not.Null);
             method.Invoke(renderer, new object[] { eventId });
+        }
+
+        private static QaStateSnapshot CaptureQaState(ForestFloorRenderer renderer)
+        {
+            MethodInfo method = typeof(ForestFloorRenderer).GetMethod(
+                "ContributeQaState",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            var snapshot = new QaStateSnapshot();
+            method.Invoke(renderer, new object[] { snapshot });
+            Assert.That(snapshot.expedition, Is.Not.Null);
+            return snapshot;
         }
 
         private static void SetPrivateField<T>(T target, string fieldName, object value)
