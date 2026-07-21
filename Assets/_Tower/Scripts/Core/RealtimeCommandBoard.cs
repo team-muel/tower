@@ -15,6 +15,7 @@ namespace Tower.Core
     {
         public const float DefaultPreciseOrderLifetimeSeconds = 3f;
 
+        private readonly CommandTelemetry telemetry;
         private readonly Dictionary<string, CommandStanceAssignment> assignments =
             new Dictionary<string, CommandStanceAssignment>(StringComparer.Ordinal);
         private readonly Dictionary<string, PreciseOrder> preciseOrders =
@@ -22,6 +23,12 @@ namespace Tower.Core
 
         public IReadOnlyDictionary<string, CommandStanceAssignment> Assignments => assignments;
         public IReadOnlyDictionary<string, PreciseOrder> PreciseOrders => preciseOrders;
+        public CommandTelemetrySnapshot Telemetry => telemetry.Snapshot;
+
+        public RealtimeCommandBoard(CommandTelemetry commandTelemetry = null)
+        {
+            telemetry = commandTelemetry ?? new CommandTelemetry();
+        }
 
         public CommandStanceAssignment GetAssignment(string unitId, DispositionType disposition)
         {
@@ -56,6 +63,7 @@ namespace Tower.Core
             assignments[unitId] = new CommandStanceAssignment(
                 stance,
                 stance == CommandStance.Focus ? focusTargetId : null);
+            telemetry.RecordStanceCommand();
             return Result.Success();
         }
 
@@ -101,6 +109,7 @@ namespace Tower.Core
                 return Result.Failure("Precise order expiration must be finite.");
             }
 
+            bool replacedExisting = preciseOrders.ContainsKey(unitId);
             preciseOrders[unitId] = new PreciseOrder(
                 unitId,
                 abilityId,
@@ -108,6 +117,7 @@ namespace Tower.Core
                 targetPoint,
                 issuedAtSeconds,
                 expiresAtSeconds);
+            telemetry.RecordPreciseOrderIssued(replacedExisting);
             return Result.Success();
         }
 
@@ -122,6 +132,7 @@ namespace Tower.Core
             if (elapsedSeconds >= order.ExpiresAtSeconds)
             {
                 preciseOrders.Remove(unitId);
+                telemetry.RecordPreciseOrderExpired();
                 order = default;
                 return false;
             }
@@ -131,7 +142,18 @@ namespace Tower.Core
 
         public bool ConsumePreciseOrder(string unitId)
         {
-            return !string.IsNullOrEmpty(unitId) && preciseOrders.Remove(unitId);
+            bool consumed = !string.IsNullOrEmpty(unitId) && preciseOrders.Remove(unitId);
+            if (consumed)
+            {
+                telemetry.RecordPreciseOrderConsumed();
+            }
+
+            return consumed;
+        }
+
+        public void RecordPreciseOrderFallback()
+        {
+            telemetry.RecordPreciseOrderFallback();
         }
 
         public void Advance(float elapsedSeconds)
@@ -146,6 +168,7 @@ namespace Tower.Core
                 if (elapsedSeconds >= pair.Value.ExpiresAtSeconds)
                 {
                     preciseOrders.Remove(pair.Key);
+                    telemetry.RecordPreciseOrderExpired();
                 }
             }
         }

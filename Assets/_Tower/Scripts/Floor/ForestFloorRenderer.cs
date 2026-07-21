@@ -119,6 +119,7 @@ namespace Tower.Floor
         public RunRewardInventory RewardInventory => _run?.Rewards;
         public EncounterResultPresenter ResultPresenter => _resultPresenter;
         public RealtimeCommandBoard CommandBoard => _commandBoard;
+        public CommandTelemetrySnapshot CommandTelemetry => _commandBoard.Telemetry;
 
         // Allows the orchestrator's Core->interface adapter to inject a real layout.
         public void SetLayoutSource(IFloorLayoutSource source)
