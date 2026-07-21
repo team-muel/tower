@@ -125,5 +125,36 @@ namespace Tower.Tests.EditMode
 
             Object.DestroyImmediate(strike);
         }
+
+        [Test]
+        public void PresentationDamageBuffer_DrainsInOrderAndClears()
+        {
+            var buffer = new CombatPresentationEventBuffer();
+            buffer.RecordDamage(new CombatDamageEvent("a", "b", "strike", 3, false));
+            buffer.RecordDamage(new CombatDamageEvent("b", "a", "break", 5, true));
+            buffer.RecordDamage(new CombatDamageEvent("a", "b", "miss", 0, false));
+
+            Assert.That(buffer.PendingDamageCount, Is.EqualTo(2));
+            var drained = buffer.DrainDamageEvents();
+
+            Assert.That(drained, Has.Count.EqualTo(2));
+            Assert.That(drained[0].AbilityId, Is.EqualTo("strike"));
+            Assert.That(drained[1].TargetDefeated, Is.True);
+            Assert.That(buffer.PendingDamageCount, Is.Zero);
+        }
+
+        [Test]
+        public void PresentationObserver_ForwardsMetricsAndQueuesDamage()
+        {
+            var metrics = new CombatMetrics();
+            var observer = new CombatPresentationObserver(metrics);
+            var damage = new CombatDamageEvent("caster", "enemy", "strike", 4, false);
+
+            observer.OnDamageApplied(null, damage);
+
+            Assert.That(metrics.Units["caster"].DamageDealt, Is.EqualTo(4));
+            Assert.That(metrics.Units["enemy"].DamageTaken, Is.EqualTo(4));
+            Assert.That(observer.Events.PendingDamageCount, Is.EqualTo(1));
+        }
     }
 }

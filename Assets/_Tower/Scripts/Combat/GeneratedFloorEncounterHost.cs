@@ -38,6 +38,8 @@ namespace Tower.Combat
         private string eventId;
         private string playerUnitId;
         private RealtimeCommandBoard commandBoard;
+        private CombatPresentationObserver presentationObserver;
+        private CombatFeedbackPresenter feedbackPresenter;
         private bool secondaryBrainsEnabled;
         private float simulationAccumulator;
 
@@ -315,6 +317,12 @@ namespace Tower.Combat
                     return;
                 }
 
+                if (feedbackPresenter != null && presentationObserver != null
+                    && presentationObserver.Events.PendingDamageCount > 0)
+                {
+                    feedbackPresenter.Present(presentationObserver.Events.DrainDamageEvents());
+                }
+
                 SyncWorldViews();
             }
 
@@ -342,6 +350,7 @@ namespace Tower.Combat
             battlefield = new AnalogBattlefield(ArenaSize, ArenaSize);
             var statusBoard = new StatusBoard();
             Metrics = new CombatMetrics();
+            presentationObserver = new CombatPresentationObserver(Metrics);
             var combatants = new List<CombatantRef>();
 
             Result playerAdded = AddCombatant(
@@ -381,13 +390,16 @@ namespace Tower.Combat
                 if (enemyAdded.IsFailure) return enemyAdded;
             }
 
-            Result<CombatState> state = CombatState.Create(combatants, statusBoard, Metrics);
+            Result<CombatState> state = CombatState.Create(combatants, statusBoard, presentationObserver);
             if (state.IsFailure) return Result.Failure(state.Error);
             CombatState = state.Value;
 
+            feedbackPresenter = gameObject.AddComponent<CombatFeedbackPresenter>();
+            feedbackPresenter.Configure(bodies, combatants);
+
             Result<ActionScorer> scorer = ActionScorer.Create(battlefield, statusBoard);
             if (scorer.IsFailure) return Result.Failure(scorer.Error);
-            Result<AbilityResolver> resolver = AbilityResolver.Create(battlefield, statusBoard, Metrics);
+            Result<AbilityResolver> resolver = AbilityResolver.Create(battlefield, statusBoard, presentationObserver);
             if (resolver.IsFailure) return Result.Failure(resolver.Error);
             Result<AutonomousCombatDriver> createdDriver = AutonomousCombatDriver.Create(
                 CombatState,
@@ -810,6 +822,7 @@ namespace Tower.Combat
 
         private void CleanupCombatViews()
         {
+            presentationObserver?.Events.Clear();
             for (int index = 0; index < views.Count; index++)
             {
                 if (views[index] == null) continue;
