@@ -35,6 +35,11 @@ namespace Tower.Core
         public bool IsCombatEnded { get; private set; }
         public CombatTeam? WinningTeam { get; private set; }
 
+        // Stable registration order for runtime inspection surfaces. The
+        // returned copy keeps QA/read-only consumers from mutating combat
+        // authority while preserving deterministic unit ordering.
+        public IReadOnlyList<string> UnitIds => new List<string>(registrationOrder);
+
         public IReadOnlyList<string> LivingUnitIds
         {
             get

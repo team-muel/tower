@@ -53,6 +53,52 @@ namespace Tower.Core
                 WriteUnit(builder, units[index]);
             }
 
+            builder.Append("]");
+            builder.Append(",\"elapsedSeconds\":")
+                .Append(combat.elapsedSeconds.ToString("0.###", CultureInfo.InvariantCulture));
+            builder.Append(",\"encounterActive\":").Append(combat.encounterActive ? "true" : "false");
+            builder.Append(",\"encounterResolved\":").Append(combat.encounterResolved ? "true" : "false");
+            builder.Append(",\"playerDefeated\":").Append(combat.playerDefeated ? "true" : "false");
+            builder.Append(",\"winningTeam\":");
+            WriteString(builder, combat.winningTeam);
+            builder.Append(",\"feedbackPopupCount\":")
+                .Append(combat.feedbackPopupCount.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"stanceCommands\":")
+                .Append(combat.stanceCommands.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"preciseOrdersIssued\":")
+                .Append(combat.preciseOrdersIssued.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"preciseOrdersReplaced\":")
+                .Append(combat.preciseOrdersReplaced.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"preciseOrdersConsumed\":")
+                .Append(combat.preciseOrdersConsumed.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"preciseOrdersExpired\":")
+                .Append(combat.preciseOrdersExpired.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"preciseOrderFallbacks\":")
+                .Append(combat.preciseOrderFallbacks.ToString(CultureInfo.InvariantCulture));
+            builder.Append(",\"intents\":[");
+            var intents = combat.intents ?? new List<QaIntentSnapshot>();
+            for (var index = 0; index < intents.Count; index++)
+            {
+                if (index > 0)
+                {
+                    builder.Append(',');
+                }
+
+                WriteIntent(builder, intents[index]);
+            }
+
+            builder.Append("],\"preciseOrders\":[");
+            var preciseOrders = combat.preciseOrders ?? new List<QaPreciseOrderSnapshot>();
+            for (var index = 0; index < preciseOrders.Count; index++)
+            {
+                if (index > 0)
+                {
+                    builder.Append(',');
+                }
+
+                WritePreciseOrder(builder, preciseOrders[index]);
+            }
+
             builder.Append("]}");
         }
 
@@ -77,6 +123,55 @@ namespace Tower.Core
             WriteStringArray(builder, unit.marks);
             builder.Append(",\"pendingAbility\":");
             WriteString(builder, unit.pendingAbility);
+            builder.Append(",\"disposition\":");
+            WriteString(builder, unit.disposition);
+            builder.Append(",\"intent\":");
+            WriteString(builder, unit.intent);
+            builder.Append('}');
+        }
+
+        private static void WriteIntent(StringBuilder builder, QaIntentSnapshot intent)
+        {
+            if (intent == null)
+            {
+                builder.Append("null");
+                return;
+            }
+
+            builder.Append("{\"unitId\":");
+            WriteString(builder, intent.unitId);
+            builder.Append(",\"planKind\":");
+            WriteString(builder, intent.planKind);
+            builder.Append(",\"abilityId\":");
+            WriteString(builder, intent.abilityId);
+            builder.Append(",\"targetUnitId\":");
+            WriteString(builder, intent.targetUnitId);
+            builder.Append(",\"disposition\":");
+            WriteString(builder, intent.disposition);
+            builder.Append(",\"stance\":");
+            WriteString(builder, intent.stance);
+            builder.Append(",\"executeAtSeconds\":")
+                .Append(intent.executeAtSeconds.ToString("0.###", CultureInfo.InvariantCulture));
+            builder.Append(",\"precise\":").Append(intent.precise ? "true" : "false");
+            builder.Append('}');
+        }
+
+        private static void WritePreciseOrder(StringBuilder builder, QaPreciseOrderSnapshot order)
+        {
+            if (order == null)
+            {
+                builder.Append("null");
+                return;
+            }
+
+            builder.Append("{\"unitId\":");
+            WriteString(builder, order.unitId);
+            builder.Append(",\"abilityId\":");
+            WriteString(builder, order.abilityId);
+            builder.Append(",\"targetUnitId\":");
+            WriteString(builder, order.targetUnitId);
+            builder.Append(",\"expiresAtSeconds\":")
+                .Append(order.expiresAtSeconds.ToString("0.###", CultureInfo.InvariantCulture));
             builder.Append('}');
         }
 
