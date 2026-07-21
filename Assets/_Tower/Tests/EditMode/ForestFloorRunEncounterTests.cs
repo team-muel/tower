@@ -164,6 +164,8 @@ namespace Tower.Tests.EditMode
                     InvokeOutcome(renderer, new GeneratedEncounterResult(
                         scheduled.EventId, CombatTeam.Player, 3, 2.0f));
 
+                    renderer.ResultPresenter.Tick(3.1f);
+
                     Result<RunOutcome> advanced = renderer.AdvanceRunFloor();
                     Assert.That(advanced.IsSuccess, Is.True,
                         advanced.IsFailure ? advanced.Error : string.Empty);
@@ -175,6 +177,48 @@ namespace Tower.Tests.EditMode
                 Assert.That(renderer.RunLifecycle.IsConquered, Is.True);
                 Assert.That(renderer.RewardInventory.ClaimCount, Is.EqualTo(totalEvents));
                 Assert.That(renderer.RewardInventory.AmountOf(RewardType.Ability), Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                Object.DestroyImmediate(rewards);
+            }
+        }
+
+        [Test]
+        public void EncounterResult_BlocksTraversalAndFloorAdvanceUntilItExpires()
+        {
+            GameObject host = new GameObject("forest-result-lock");
+            EncounterRewardProfile rewards = EncounterRewardProfile.CreateRuntime(
+                RewardType.Resource,
+                1,
+                "Run resource",
+                RewardType.Ability,
+                1,
+                "Ability draft");
+            try
+            {
+                ForestFloorRenderer renderer = host.AddComponent<ForestFloorRenderer>();
+                SetPrivateField(renderer, "encounterRewardProfile", rewards);
+                renderer.Rebuild();
+                renderer.PlayerTransform.position = new LinearStubLayout(renderer.Graph)
+                    .GetField(renderer.CurrentNodeId)
+                    .ExitPoint;
+                InvokeOutcome(renderer, new GeneratedEncounterResult(
+                    renderer.ScheduledRunEvent.EventId,
+                    CombatTeam.Player,
+                    2,
+                    1.4f));
+
+                Assert.That(renderer.IsResultBlocking, Is.True);
+                Assert.That(renderer.TryEnterNearestForkAtExit(), Is.False);
+                Result<RunOutcome> blocked = renderer.AdvanceRunFloor();
+                Assert.That(blocked.IsFailure, Is.True);
+                Assert.That(blocked.Error, Does.Contain("still being presented"));
+
+                renderer.ResultPresenter.Tick(3.1f);
+                Assert.That(renderer.IsResultBlocking, Is.False);
+                Assert.That(renderer.TryEnterNearestForkAtExit(), Is.True);
             }
             finally
             {
