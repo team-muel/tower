@@ -24,6 +24,7 @@ namespace Tower.Floor
     public sealed class ForestFloorRenderer : MonoBehaviour
     {
         public const string GeneratedRootName = "_GeneratedForestFloor";
+        private const string QaStateKey = "forest-floor";
 
         [Header("Floor generation")]
         [SerializeField] private int seed = 777;
@@ -102,6 +103,7 @@ namespace Tower.Floor
         private IReadOnlyList<CompanionEntity> _companions = Array.Empty<CompanionEntity>();
         private EncounterResultPresenter _resultPresenter;
         private readonly RealtimeCommandBoard _commandBoard = new RealtimeCommandBoard();
+        private string _qaLastOutcome = string.Empty;
 
         public FloorGraph Graph => _graph;
         public FloorExploration Exploration => _exploration;
@@ -130,9 +132,83 @@ namespace Tower.Floor
 
         private bool _layoutInjected;
 
+        private void OnEnable()
+        {
+            QaRuntime.RegisterStateContributor(QaStateKey, ContributeQaState);
+        }
+
+        private void OnDisable()
+        {
+            QaRuntime.UnregisterStateContributor(QaStateKey);
+        }
+
         private void Start()
         {
             if (buildOnStart) Rebuild();
+        }
+
+        private void ContributeQaState(QaStateSnapshot snapshot)
+        {
+            if (snapshot == null || (_run == null && _graph == null))
+            {
+                return;
+            }
+
+            snapshot.expedition = new QaExpeditionSnapshot
+            {
+                stairwayIndex = 1,
+                stairwayCount = 1,
+                floorIndex = _run == null ? 0 : _run.FloorNumber,
+                floorCount = RunEventPlan.FloorCount,
+                roomIndex = CurrentNodeId,
+                roomCount = _graph == null ? 0 : _graph.Nodes.Count,
+                retreatCount = _run == null ? 0 : _run.RetreatCount,
+                isComplete = _run != null && _run.IsConquered,
+                phase = QaPhase(),
+                nextRoomPreview = _scheduledRunEvent == null
+                    ? string.Empty
+                    : _scheduledRunEvent.Kind + ":" + _scheduledRunEvent.EventId,
+                lastOutcome = _qaLastOutcome
+            };
+
+            if (_activeEncounter == null || _activeEncounter.CombatState == null)
+            {
+                snapshot.combat = null;
+                return;
+            }
+
+            snapshot.combat = snapshot.combat ?? new QaCombatSnapshot();
+            _activeEncounter.PopulateQaCombatSnapshot(snapshot.combat, IsSlowMoCommandWindow);
+        }
+
+        private string QaPhase()
+        {
+            if (_run == null)
+            {
+                return "loading";
+            }
+
+            if (_run.IsConquered)
+            {
+                return "conquered";
+            }
+
+            if (_activeEncounter == null)
+            {
+                return "exploration";
+            }
+
+            if (_activeEncounter.IsPlayerDefeated)
+            {
+                return "defeat";
+            }
+
+            if (_activeEncounter.IsResolved)
+            {
+                return "result";
+            }
+
+            return _activeEncounter.IsCombatActive ? "combat" : "encounter";
         }
 
         private void Update()
@@ -1100,6 +1176,7 @@ namespace Tower.Floor
                 + $"reward={reward.Value.Type}+{reward.Value.Amount} newlyGranted={granted.Value} "
                 + $"actions={combatResult.ActionCount} duration={combatResult.DurationSeconds:0.0}s.",
                 this);
+            _qaLastOutcome = "Resolved:" + combatResult.EventId;
             SaveRun();
         }
 
@@ -1120,6 +1197,7 @@ namespace Tower.Floor
                 return;
             }
 
+            _qaLastOutcome = retreat.Value.ToString();
             _resetRunInteractionsOnRebuild = true;
             SaveRun();
             Debug.Log(
@@ -1201,6 +1279,7 @@ namespace Tower.Floor
                 return advanced;
             }
 
+            _qaLastOutcome = advanced.Value.ToString();
             SaveRun();
             if (advanced.Value == RunOutcome.Conquered)
             {

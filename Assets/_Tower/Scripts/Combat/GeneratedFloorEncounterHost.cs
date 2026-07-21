@@ -67,6 +67,135 @@ namespace Tower.Combat
             ? default
             : commandBoard.Telemetry;
 
+        // T71: fills the engine-neutral QA DTO without exposing mutable combat
+        // collections. Unit order, intents, and precise orders are all
+        // deterministic so a state poll can be compared across runs.
+        public void PopulateQaCombatSnapshot(QaCombatSnapshot snapshot, bool commandWindowActive)
+        {
+            if (snapshot == null)
+            {
+                return;
+            }
+
+            snapshot.round = 0;
+            snapshot.activeUnitId = string.Empty;
+            snapshot.remainingOrders = commandBoard == null ? 0 : commandBoard.PreciseOrders.Count;
+            snapshot.commandMode = commandWindowActive;
+            snapshot.spaceMode = battlefield == null ? string.Empty : battlefield.Mode.ToString();
+            snapshot.elapsedSeconds = CombatState == null ? 0f : CombatState.ElapsedSeconds;
+            snapshot.encounterActive = IsCombatActive;
+            snapshot.encounterResolved = IsResolved;
+            snapshot.playerDefeated = IsPlayerDefeated;
+            snapshot.winningTeam = CombatState == null || !CombatState.WinningTeam.HasValue
+                ? string.Empty
+                : CombatState.WinningTeam.Value.ToString();
+            snapshot.feedbackPopupCount = feedbackPresenter == null
+                ? 0
+                : feedbackPresenter.ActivePopupCount;
+
+            CommandTelemetrySnapshot telemetry = CommandTelemetry;
+            snapshot.stanceCommands = telemetry.StanceCommands;
+            snapshot.preciseOrdersIssued = telemetry.PreciseOrdersIssued;
+            snapshot.preciseOrdersReplaced = telemetry.PreciseOrdersReplaced;
+            snapshot.preciseOrdersConsumed = telemetry.PreciseOrdersConsumed;
+            snapshot.preciseOrdersExpired = telemetry.PreciseOrdersExpired;
+            snapshot.preciseOrderFallbacks = telemetry.PreciseOrderFallbacks;
+
+            snapshot.initiativeOrder = snapshot.initiativeOrder ?? new List<string>();
+            snapshot.units = snapshot.units ?? new List<QaUnitSnapshot>();
+            snapshot.intents = snapshot.intents ?? new List<QaIntentSnapshot>();
+            snapshot.preciseOrders = snapshot.preciseOrders ?? new List<QaPreciseOrderSnapshot>();
+            snapshot.initiativeOrder.Clear();
+            snapshot.units.Clear();
+            snapshot.intents.Clear();
+            snapshot.preciseOrders.Clear();
+
+            if (CombatState == null)
+            {
+                return;
+            }
+
+            foreach (string unitId in CombatState.UnitIds)
+            {
+                CombatantRef combatant = CombatState.GetCombatant(unitId);
+                if (combatant == null || combatant.State == null)
+                {
+                    continue;
+                }
+
+                snapshot.initiativeOrder.Add(unitId);
+                var unit = new QaUnitSnapshot
+                {
+                    unitId = unitId,
+                    team = combatant.Team.ToString(),
+                    currentHp = combatant.State.CurrentHp,
+                    maxHp = combatant.State.Definition.MaxHp,
+                    alive = combatant.IsAlive,
+                    x = -1f,
+                    y = -1f,
+                    disposition = combatant.State.Definition.Disposition.ToString()
+                };
+
+                BattlePos? position = battlefield == null ? null : battlefield.FindOccupant(unitId);
+                if (position.HasValue)
+                {
+                    unit.x = position.Value.X;
+                    unit.y = position.Value.Y;
+                }
+
+                IReadOnlyList<string> marks = CombatState.StatusBoard.GetActiveMarkIds(
+                    unitId,
+                    CombatState.ElapsedSeconds);
+                for (int markIndex = 0; markIndex < marks.Count; markIndex++)
+                {
+                    unit.marks.Add(marks[markIndex]);
+                }
+
+                if (driver != null
+                    && driver.TryGetActiveIntent(unitId, out AutonomousCombatIntent intent))
+                {
+                    string action = intent.Plan.Kind == AiPlanKind.Ability
+                        ? intent.Plan.AbilityId
+                        : intent.Plan.Kind.ToString();
+                    unit.pendingAbility = intent.Plan.AbilityId ?? string.Empty;
+                    unit.intent = action ?? string.Empty;
+
+                    snapshot.intents.Add(new QaIntentSnapshot
+                    {
+                        unitId = intent.UnitId,
+                        planKind = intent.Plan.Kind.ToString(),
+                        abilityId = intent.Plan.AbilityId ?? string.Empty,
+                        targetUnitId = intent.Plan.TargetUnitId ?? string.Empty,
+                        disposition = intent.Disposition.ToString(),
+                        stance = CommandStanceRules.DisplayName(intent.Stance),
+                        executeAtSeconds = intent.ExecuteAtSeconds,
+                        precise = intent.IsPreciseOrder
+                    });
+                }
+
+                snapshot.units.Add(unit);
+            }
+
+            if (commandBoard == null)
+            {
+                return;
+            }
+
+            var orderIds = new List<string>(commandBoard.PreciseOrders.Keys);
+            orderIds.Sort(StringComparer.Ordinal);
+            for (int index = 0; index < orderIds.Count; index++)
+            {
+                PreciseOrder order = commandBoard.PreciseOrders[orderIds[index]];
+                snapshot.preciseOrders.Add(new QaPreciseOrderSnapshot
+                {
+                    unitId = order.UnitId,
+                    abilityId = order.AbilityId,
+                    targetUnitId = order.TargetUnitId,
+                    expiresAtSeconds = order.ExpiresAtSeconds
+                });
+            }
+        }
+
         public Result Configure(
             Transform playerTransform,
             Behaviour playerMovementBehaviour,

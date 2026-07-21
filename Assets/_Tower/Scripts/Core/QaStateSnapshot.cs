@@ -23,6 +23,23 @@ namespace Tower.Core
         public string spaceMode = string.Empty;
         public List<string> initiativeOrder = new List<string>();
         public List<QaUnitSnapshot> units = new List<QaUnitSnapshot>();
+        // T71: the generated-floor runtime is real-time rather than round
+        // based, so expose the live clock and encounter lifecycle explicitly.
+        public float elapsedSeconds;
+        public bool encounterActive;
+        public bool encounterResolved;
+        public bool playerDefeated;
+        public string winningTeam = string.Empty;
+        public int feedbackPopupCount;
+        // T68/T71: command lifecycle counters and live order/telegraph audit.
+        public int stanceCommands;
+        public int preciseOrdersIssued;
+        public int preciseOrdersReplaced;
+        public int preciseOrdersConsumed;
+        public int preciseOrdersExpired;
+        public int preciseOrderFallbacks;
+        public List<QaIntentSnapshot> intents = new List<QaIntentSnapshot>();
+        public List<QaPreciseOrderSnapshot> preciseOrders = new List<QaPreciseOrderSnapshot>();
     }
 
     public sealed class QaUnitSnapshot
@@ -40,6 +57,29 @@ namespace Tower.Core
         // T19: the engine's pending ability when this unit holds the active
         // turn; empty otherwise (the engine tracks one pending pick at a time).
         public string pendingAbility = string.Empty;
+        // T71: live generated-floor combat readability.
+        public string disposition = string.Empty;
+        public string intent = string.Empty;
+    }
+
+    public sealed class QaIntentSnapshot
+    {
+        public string unitId = string.Empty;
+        public string planKind = string.Empty;
+        public string abilityId = string.Empty;
+        public string targetUnitId = string.Empty;
+        public string disposition = string.Empty;
+        public string stance = string.Empty;
+        public float executeAtSeconds;
+        public bool precise;
+    }
+
+    public sealed class QaPreciseOrderSnapshot
+    {
+        public string unitId = string.Empty;
+        public string abilityId = string.Empty;
+        public string targetUnitId = string.Empty;
+        public float expiresAtSeconds;
     }
 
     public sealed class QaExpeditionSnapshot

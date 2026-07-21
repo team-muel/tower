@@ -42,7 +42,9 @@ namespace Tower.Tests.EditMode
                             x = 1,
                             y = 2,
                             marks = new List<string> { "burn" },
-                            pendingAbility = "strike"
+                            pendingAbility = "strike",
+                            disposition = "Aggressive",
+                            intent = "strike"
                         },
                         new QaUnitSnapshot
                         {
@@ -79,14 +81,72 @@ namespace Tower.Tests.EditMode
                 + "\"combat\":{\"round\":2,\"activeUnitId\":\"regressor\",\"remainingOrders\":1,\"commandMode\":true,\"spaceMode\":\"Analog\","
                 + "\"initiativeOrder\":[\"regressor\",\"enemy-1-0\"],"
                 + "\"units\":["
-                + "{\"unitId\":\"regressor\",\"team\":\"Player\",\"currentHp\":18,\"maxHp\":24,\"alive\":true,\"x\":1,\"y\":2,\"marks\":[\"burn\"],\"pendingAbility\":\"strike\"},"
-                + "{\"unitId\":\"enemy-1-0\",\"team\":\"Enemy\",\"currentHp\":0,\"maxHp\":10,\"alive\":false,\"x\":-1,\"y\":-1,\"marks\":[],\"pendingAbility\":\"\"}"
-                + "]},"
+                + "{\"unitId\":\"regressor\",\"team\":\"Player\",\"currentHp\":18,\"maxHp\":24,\"alive\":true,\"x\":1,\"y\":2,\"marks\":[\"burn\"],\"pendingAbility\":\"strike\",\"disposition\":\"Aggressive\",\"intent\":\"strike\"},"
+                + "{\"unitId\":\"enemy-1-0\",\"team\":\"Enemy\",\"currentHp\":0,\"maxHp\":10,\"alive\":false,\"x\":-1,\"y\":-1,\"marks\":[],\"pendingAbility\":\"\",\"disposition\":\"\",\"intent\":\"\"}"
+                + "],\"elapsedSeconds\":0,\"encounterActive\":false,\"encounterResolved\":false,\"playerDefeated\":false,\"winningTeam\":\"\",\"feedbackPopupCount\":0,\"stanceCommands\":0,\"preciseOrdersIssued\":0,\"preciseOrdersReplaced\":0,\"preciseOrdersConsumed\":0,\"preciseOrdersExpired\":0,\"preciseOrderFallbacks\":0,\"intents\":[],\"preciseOrders\":[]},"
                 + "\"expedition\":{\"stairwayIndex\":1,\"stairwayCount\":1,\"floorIndex\":2,\"floorCount\":3,"
                 + "\"roomIndex\":1,\"roomCount\":4,\"retreatCount\":1,\"isComplete\":false,"
                 + "\"phase\":\"combat\",\"nextRoomPreview\":\"강적\",\"lastOutcome\":\"Retreated\",\"offeredPortals\":[]},"
                 + "\"camp\":null}";
             Assert.That(json, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ToJson_RuntimeCombatAudit_WritesLifecycleOrdersAndIntents()
+        {
+            var snapshot = new QaStateSnapshot
+            {
+                sceneName = "Expedition",
+                combat = new QaCombatSnapshot
+                {
+                    elapsedSeconds = 1.25f,
+                    encounterActive = true,
+                    commandMode = true,
+                    winningTeam = "",
+                    feedbackPopupCount = 2,
+                    stanceCommands = 3,
+                    preciseOrdersIssued = 4,
+                    preciseOrdersReplaced = 1,
+                    preciseOrdersConsumed = 2,
+                    preciseOrdersExpired = 0,
+                    preciseOrderFallbacks = 1,
+                    intents = new List<QaIntentSnapshot>
+                    {
+                        new QaIntentSnapshot
+                        {
+                            unitId = "companion-0",
+                            planKind = "Ability",
+                            abilityId = "mark",
+                            targetUnitId = "enemy-0",
+                            disposition = "Protective",
+                            stance = "Guard",
+                            executeAtSeconds = 2f,
+                            precise = true
+                        }
+                    },
+                    preciseOrders = new List<QaPreciseOrderSnapshot>
+                    {
+                        new QaPreciseOrderSnapshot
+                        {
+                            unitId = "companion-0",
+                            abilityId = "mark",
+                            targetUnitId = "enemy-0",
+                            expiresAtSeconds = 4.25f
+                        }
+                    }
+                }
+            };
+
+            var json = QaStateSerializer.ToJson(snapshot);
+
+            Assert.That(json, Does.Contain("\"elapsedSeconds\":1.25"));
+            Assert.That(json, Does.Contain("\"encounterActive\":true"));
+            Assert.That(json, Does.Contain("\"feedbackPopupCount\":2"));
+            Assert.That(json, Does.Contain("\"preciseOrdersIssued\":4"));
+            Assert.That(json, Does.Contain("\"intents\":[{\"unitId\":\"companion-0\""));
+            Assert.That(json, Does.Contain("\"stance\":\"Guard\""));
+            Assert.That(json, Does.Contain("\"preciseOrders\":[{\"unitId\":\"companion-0\""));
+            Assert.That(json, Does.Contain("\"expiresAtSeconds\":4.25"));
         }
 
         [Test]
