@@ -106,6 +106,76 @@ namespace Tower.Tests.EditMode
             Assert.That(outcome.ActionCount, Is.EqualTo(host.Metrics.ActionCount));
             Assert.That(outcome.DurationSeconds, Is.EqualTo(host.CombatState.ElapsedSeconds));
             Assert.That(host.EnemyCount, Is.Zero);
+            Assert.That(host.Views, Is.Empty);
+
+            var snapshot = new QaCombatSnapshot();
+            host.PopulateQaCombatSnapshot(snapshot, commandWindowActive: false);
+            Assert.That(snapshot.feedbackPopupCount, Is.GreaterThan(0),
+                "the final hit popup survives world-view teardown");
+        }
+
+        [Test]
+        public void ConfigureActivateCombatDefeat_CleansWorldViewsBeforeCallback()
+        {
+            GameObject root = Track(new GameObject("GeneratedEncounterDefeatCleanupTest"));
+            GameObject player = Track(new GameObject("Player"));
+            ForestPlayerController movement = player.AddComponent<ForestPlayerController>();
+            CharacterDef playerDefinition = Character(
+                "player",
+                1,
+                0,
+                0,
+                1,
+                Ability("player-strike", 1, 5f, 0f));
+            CharacterDef enemyDefinition = Character(
+                "pillbug",
+                100,
+                20,
+                0,
+                20,
+                Ability("enemy-strike", 5, 5f, 0f));
+            EnemyCombatProfile[] profiles =
+            {
+                Profile("melee", enemyDefinition),
+                Profile("ranged", enemyDefinition)
+            };
+            FloorEncounter encounter = FloorEncounterComposer.Compose(
+                EncounterBudget.Default,
+                RoomKind.Normal,
+                77,
+                2,
+                2,
+                BiomeId.Forest,
+                new[] { "melee", "ranged" },
+                "boss");
+            RunEventSlot runEvent = RunEventPlan.Create(77).Slots[0];
+            bool callbackInvoked = false;
+            var host = root.AddComponent<GeneratedFloorEncounterHost>();
+
+            Result configured = host.Configure(
+                player.transform,
+                movement,
+                playerDefinition,
+                new CompanionEntity[0],
+                profiles,
+                encounter,
+                runEvent,
+                Vector3.forward,
+                _ => callbackInvoked = true,
+                7f,
+                0.45f);
+
+            Assert.That(configured.IsSuccess, Is.True, configured.Error);
+            host.Tick(0.45f);
+            for (int tick = 0; tick < 200 && !host.IsPlayerDefeated; tick++)
+            {
+                host.Tick(0.1f);
+            }
+
+            Assert.That(host.IsPlayerDefeated, Is.True);
+            Assert.That(callbackInvoked, Is.True);
+            Assert.That(host.EnemyCount, Is.Zero);
+            Assert.That(host.Views, Is.Empty);
         }
 
         [Test]
