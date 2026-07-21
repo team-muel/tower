@@ -21,6 +21,9 @@ namespace Tower.Combat
 
         public float Charge => resource == null ? 1f : resource.Charge;
         public bool IsEngaged => engaged;
+        public bool CanIssuePreciseOrders => resource != null
+            && resource.CanEngage
+            && (engaged || Input.GetKey(KeyCode.LeftShift));
 
         private void Awake()
         {

@@ -85,6 +85,54 @@ namespace Tower.Tests.EditMode
             Assert.That(result.Value.TargetUnitId, Is.EqualTo("enemy-b"));
         }
 
+        [Test]
+        public void ChooseAction_FocusStanceBiasesAssignedTarget()
+        {
+            InitScorer();
+            var strike = Ability("strike", AbilityTag.Apply, 5, 8);
+            var caster = Unit("caster", CombatTeam.Player, abilities: new[] { strike });
+            var enemyA = Unit("enemy-a", CombatTeam.Enemy);
+            var enemyB = Unit("enemy-b", CombatTeam.Enemy);
+            Place("caster", 2f, 2f);
+            Place("enemy-a", 3f, 2f);
+            Place("enemy-b", 2f, 3f);
+            var state = State(caster, enemyA, enemyB);
+
+            var result = scorer.ChooseAction(state, "caster", CommandStance.Focus, "enemy-b");
+
+            Assert.That(result.IsSuccess, Is.True, result.Error);
+            Assert.That(result.Value.Kind, Is.EqualTo(AiPlanKind.Ability));
+            Assert.That(result.Value.TargetUnitId, Is.EqualTo("enemy-b"));
+        }
+
+        [Test]
+        public void ChoosePreciseAction_RestrictsBothAbilityAndTarget()
+        {
+            InitScorer();
+            var first = Ability("first", AbilityTag.Apply, 5, 8);
+            var second = Ability("second", AbilityTag.Apply, 5, 8);
+            var caster = Unit("caster", CombatTeam.Player, abilities: new[] { first, second });
+            var enemyA = Unit("enemy-a", CombatTeam.Enemy);
+            var enemyB = Unit("enemy-b", CombatTeam.Enemy);
+            Place("caster", 2f, 2f);
+            Place("enemy-a", 3f, 2f);
+            Place("enemy-b", 2f, 3f);
+            var state = State(caster, enemyA, enemyB);
+
+            var result = scorer.ChoosePreciseAction(
+                state,
+                "caster",
+                "second",
+                "enemy-b",
+                null,
+                CommandStance.Assault);
+
+            Assert.That(result.IsSuccess, Is.True, result.Error);
+            Assert.That(result.Value.Kind, Is.EqualTo(AiPlanKind.Ability));
+            Assert.That(result.Value.AbilityId, Is.EqualTo("second"));
+            Assert.That(result.Value.TargetUnitId, Is.EqualTo("enemy-b"));
+        }
+
         private AiPlan RunMarkedEnemyScenario()
         {
             InitScorer();

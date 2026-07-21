@@ -8,8 +8,8 @@ namespace Tower.Core
     // actor's disposition weights, and returns the best plan. Ties break
     // deterministically: higher score, then action kind (Ability < Move <
     // Skip), then ability id, then target id, then destination (Y, then X).
-    // Pure C#. Dispositions live in DispositionWeights data — the scorer has
-    // no per-disposition branches.
+    // Pure C#. Dispositions live in DispositionWeights data and owner commands
+    // live in CommandStanceWeights — the scorer has no per-personality branch.
     // Spatial queries go through IBattlefield. Analog mode samples a fixed
     // deterministic candidate set (see AnalogBattlefield.GetMoveCandidates).
     public sealed class ActionScorer
@@ -17,21 +17,25 @@ namespace Tower.Core
         private readonly IBattlefield battlefield;
         private readonly StatusBoard statusBoard;
         private readonly IReadOnlyDictionary<DispositionType, DispositionWeights> weightTable;
+        private readonly IReadOnlyDictionary<CommandStance, CommandStanceWeights> stanceWeightTable;
 
         private ActionScorer(
             IBattlefield battlefield,
             StatusBoard statusBoard,
-            IReadOnlyDictionary<DispositionType, DispositionWeights> weightTable)
+            IReadOnlyDictionary<DispositionType, DispositionWeights> weightTable,
+            IReadOnlyDictionary<CommandStance, CommandStanceWeights> stanceWeightTable)
         {
             this.battlefield = battlefield;
             this.statusBoard = statusBoard;
             this.weightTable = weightTable;
+            this.stanceWeightTable = stanceWeightTable;
         }
 
         public static Result<ActionScorer> Create(
             IBattlefield battlefield,
             StatusBoard statusBoard,
-            IReadOnlyDictionary<DispositionType, DispositionWeights> weightTable = null)
+            IReadOnlyDictionary<DispositionType, DispositionWeights> weightTable = null,
+            IReadOnlyDictionary<CommandStance, CommandStanceWeights> stanceWeightTable = null)
         {
             if (battlefield == null)
             {
@@ -44,22 +48,87 @@ namespace Tower.Core
             }
 
             return Result<ActionScorer>.Success(
-                new ActionScorer(battlefield, statusBoard, weightTable ?? DispositionWeights.CreateDefaultTable()));
+                new ActionScorer(
+                    battlefield,
+                    statusBoard,
+                    weightTable ?? DispositionWeights.CreateDefaultTable(),
+                    stanceWeightTable ?? CommandStanceWeights.CreateDefaultTable()));
         }
 
         public Result<AiPlan> ChooseAction(CombatState state, string unitId)
         {
-            return ChooseAction(state, unitId, false, null, true);
+            return ChooseAction(state, unitId, false, null, true, null, null, null, null, false);
+        }
+
+        public Result<AiPlan> ChooseAction(
+            CombatState state,
+            string unitId,
+            CommandStance commandStance,
+            string focusTargetId = null)
+        {
+            return ChooseAction(
+                state,
+                unitId,
+                false,
+                null,
+                true,
+                commandStance,
+                focusTargetId,
+                null,
+                null,
+                false);
         }
 
         public Result<AiPlan> ChooseActionWithoutMovement(CombatState state, string unitId)
         {
-            return ChooseAction(state, unitId, false, null, false);
+            return ChooseAction(state, unitId, false, null, false, null, null, null, null, false);
+        }
+
+        public Result<AiPlan> ChooseActionWithoutMovement(
+            CombatState state,
+            string unitId,
+            CommandStance commandStance,
+            string focusTargetId = null)
+        {
+            return ChooseAction(
+                state,
+                unitId,
+                false,
+                null,
+                false,
+                commandStance,
+                focusTargetId,
+                null,
+                null,
+                false);
         }
 
         public Result<AiPlan> ChoosePendingAction(CombatState state, string unitId, string pendingAbilityId)
         {
-            return ChooseAction(state, unitId, true, pendingAbilityId, true);
+            return ChooseAction(state, unitId, true, pendingAbilityId, true, null, null, null, null, false);
+        }
+
+        public Result<AiPlan> ChoosePreciseAction(
+            CombatState state,
+            string unitId,
+            string abilityId,
+            string targetUnitId,
+            BattlePos? targetPoint,
+            CommandStance commandStance,
+            string focusTargetId = null,
+            bool allowMovement = true)
+        {
+            return ChooseAction(
+                state,
+                unitId,
+                true,
+                abilityId,
+                allowMovement,
+                commandStance,
+                focusTargetId,
+                targetUnitId,
+                targetPoint,
+                true);
         }
 
         private Result<AiPlan> ChooseAction(
@@ -67,7 +136,12 @@ namespace Tower.Core
             string unitId,
             bool restrictToPending,
             string pendingAbilityId,
-            bool allowMovement)
+            bool allowMovement,
+            CommandStance? commandStance,
+            string focusTargetId,
+            string forcedTargetUnitId,
+            BattlePos? forcedTargetPoint,
+            bool requireAbility)
         {
             if (state == null)
             {
@@ -97,8 +171,13 @@ namespace Tower.Core
                 return Result<AiPlan>.Failure($"No weights configured for disposition '{disposition}'.");
             }
 
+            var resolvedStance = commandStance ?? CommandStanceRules.DefaultFor(disposition);
+            if (!stanceWeightTable.TryGetValue(resolvedStance, out var stanceWeights))
+            {
+                return Result<AiPlan>.Failure($"No weights configured for command stance '{resolvedStance}'.");
+            }
+
             var movementBudget = CombatState.DefaultMovementBudget;
-            var hasAction = true;
             var elapsedSeconds = state.ElapsedSeconds;
 
             var context = BuildContext(state, actor);
@@ -112,14 +191,12 @@ namespace Tower.Core
             {
                 var position = candidate.Position;
                 var moveDistance = candidate.Cost;
-                var positionScore = ScorePosition(position, weights, preferredRange, context);
+                var positionScore = ScorePosition(position, weights, stanceWeights, preferredRange, context);
 
                 var repositionKind = moveDistance > 0f ? AiPlanKind.Move : AiPlanKind.Skip;
-                Consider(ref best, new AiPlan(repositionKind, position, moveDistance, null, null, null, positionScore));
-
-                if (!hasAction)
+                if (!requireAbility)
                 {
-                    continue;
+                    Consider(ref best, new AiPlan(repositionKind, position, moveDistance, null, null, null, positionScore));
                 }
 
                 foreach (var ability in actor.State.Loadout.Abilities)
@@ -143,6 +220,18 @@ namespace Tower.Core
 
                     foreach (var target in EnumerateTargets(ability, context))
                     {
+                        if (!string.IsNullOrEmpty(forcedTargetUnitId)
+                            && !StringComparer.Ordinal.Equals(target.Unit.UnitId, forcedTargetUnitId))
+                        {
+                            continue;
+                        }
+
+                        if (forcedTargetPoint.HasValue
+                            && (!target.UseCellTarget || target.Position != forcedTargetPoint.Value))
+                        {
+                            continue;
+                        }
+
                         if (battlefield.Distance(position, target.Position) > ability.Range)
                         {
                             continue;
@@ -153,7 +242,15 @@ namespace Tower.Core
                             continue;
                         }
 
-                        var actionScore = ScoreAbilityUse(actor, ability, target.Unit, weights, elapsedSeconds, context);
+                        var actionScore = ScoreAbilityUse(
+                            actor,
+                            ability,
+                            target.Unit,
+                            weights,
+                            stanceWeights,
+                            focusTargetId,
+                            elapsedSeconds,
+                            context);
                         Consider(ref best, new AiPlan(
                             AiPlanKind.Ability,
                             position,
@@ -166,7 +263,7 @@ namespace Tower.Core
                 }
             }
 
-            return best != null
+            return best != null && (!requireAbility || best.Kind == AiPlanKind.Ability)
                 ? Result<AiPlan>.Success(best)
                 : Result<AiPlan>.Failure("No candidate actions available.");
         }
@@ -293,7 +390,12 @@ namespace Tower.Core
             return preferred > 0 ? preferred : 1;
         }
 
-        private float ScorePosition(BattlePos position, DispositionWeights weights, int preferredRange, TurnContext context)
+        private float ScorePosition(
+            BattlePos position,
+            DispositionWeights weights,
+            CommandStanceWeights stanceWeights,
+            int preferredRange,
+            TurnContext context)
         {
             var score = 0f;
             if (context.Enemies.Count > 0)
@@ -310,13 +412,16 @@ namespace Tower.Core
                     }
                 }
 
-                score -= weights.RangeKeepingWeight * Math.Abs(nearest - preferredRange);
-                score -= weights.DangerPenalty * adjacentEnemies;
+                score -= weights.RangeKeepingWeight
+                    * stanceWeights.RangeKeepingMultiplier
+                    * Math.Abs(nearest - preferredRange);
+                score -= weights.DangerPenalty * stanceWeights.DangerMultiplier * adjacentEnemies;
             }
 
             if (context.ProtectTargetPosition.HasValue)
             {
                 score -= weights.AllyProtectionWeight
+                    * stanceWeights.AllyProtectionMultiplier
                     * battlefield.Distance(position, context.ProtectTargetPosition.Value);
             }
 
@@ -328,17 +433,26 @@ namespace Tower.Core
             AbilityDef ability,
             CombatantRef target,
             DispositionWeights weights,
+            CommandStanceWeights stanceWeights,
+            string focusTargetId,
             float elapsedSeconds,
             TurnContext context)
         {
             var score = 0f;
             var isEnemyTarget = target.Team != actor.Team;
             var damage = isEnemyTarget ? PredictDamage(actor, ability, target, elapsedSeconds) : 0;
-            score += weights.DamageWeight * damage;
+            score += stanceWeights.DamageMultiplier * weights.DamageWeight * damage;
 
             if (isEnemyTarget && damage > 0 && damage >= target.State.CurrentHp)
             {
-                score += weights.KillBonus;
+                score += weights.KillBonus + stanceWeights.KillBonus;
+            }
+
+            if (stanceWeights.FocusTargetBonus > 0f
+                && !string.IsNullOrEmpty(focusTargetId)
+                && StringComparer.Ordinal.Equals(target.UnitId, focusTargetId))
+            {
+                score += stanceWeights.FocusTargetBonus;
             }
 
             if (ability.Tag == AbilityTag.Consume
