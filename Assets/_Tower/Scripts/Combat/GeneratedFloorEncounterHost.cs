@@ -921,6 +921,13 @@ namespace Tower.Combat
                 playerMovement.enabled = false;
             }
 
+            // The run handler may rebuild the floor, but this host owns the
+            // encounter teardown contract. Remove dead-world views and enemy
+            // bodies before handing control back so a delayed/failed callback
+            // cannot leave a second combat scene behind.
+            CleanupCombatViews();
+            CleanupEnemies();
+
             Debug.Log(
                 $"[GeneratedEncounter] Player team defeated event={eventId}; run lifecycle takes over.",
                 this);
