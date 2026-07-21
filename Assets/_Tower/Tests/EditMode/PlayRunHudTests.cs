@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using Tower.Combat;
 using Tower.Core;
+using Tower.Floor;
 using UnityEngine;
 
 namespace Tower.Tests.EditMode
@@ -91,6 +92,16 @@ namespace Tower.Tests.EditMode
 
             Assert.That(hidden.SlowMoCharge, Is.LessThan(0f), "gauge hidden by default");
             Assert.That(shown.SlowMoCharge, Is.EqualTo(0.42f).Within(0.001f));
+        }
+
+        [Test]
+        public void PlayerAbilityInput_MapsFourLoadoutKeysInOrder()
+        {
+            Assert.That(RunCommandInput.AbilitySlotForKey(KeyCode.Z), Is.EqualTo(0));
+            Assert.That(RunCommandInput.AbilitySlotForKey(KeyCode.X), Is.EqualTo(1));
+            Assert.That(RunCommandInput.AbilitySlotForKey(KeyCode.C), Is.EqualTo(2));
+            Assert.That(RunCommandInput.AbilitySlotForKey(KeyCode.V), Is.EqualTo(3));
+            Assert.That(RunCommandInput.AbilitySlotForKey(KeyCode.Q), Is.EqualTo(-1));
         }
 
         [Test]

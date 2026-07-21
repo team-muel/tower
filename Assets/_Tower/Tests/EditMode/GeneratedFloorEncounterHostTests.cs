@@ -144,6 +144,73 @@ namespace Tower.Tests.EditMode
         }
 
         [Test]
+        public void PlayerPreciseOrder_UsesLoadoutSlotAndRequiresCommandWindow()
+        {
+            GameObject root = Track(new GameObject("GeneratedEncounterPlayerOrderTest"));
+            GameObject player = Track(new GameObject("Player"));
+            ForestPlayerController movement = player.AddComponent<ForestPlayerController>();
+            CharacterDef playerDefinition = Character(
+                "player",
+                100,
+                0,
+                2,
+                5,
+                Ability("player-strike", 1, 5f, 0f));
+            CharacterDef enemyDefinition = Character(
+                "pillbug",
+                100,
+                0,
+                0,
+                1,
+                Ability("enemy-strike", 1, 2f, 1f));
+            EnemyCombatProfile[] profiles =
+            {
+                Profile("melee", enemyDefinition),
+                Profile("ranged", enemyDefinition)
+            };
+            FloorEncounter encounter = FloorEncounterComposer.Compose(
+                EncounterBudget.Default,
+                RoomKind.Normal,
+                77,
+                2,
+                2,
+                BiomeId.Forest,
+                new[] { "melee", "ranged" },
+                "boss");
+            RunEventSlot runEvent = RunEventPlan.Create(77).Slots[0];
+            var host = root.AddComponent<GeneratedFloorEncounterHost>();
+
+            Result configured = host.Configure(
+                player.transform,
+                movement,
+                playerDefinition,
+                new CompanionEntity[0],
+                profiles,
+                encounter,
+                runEvent,
+                Vector3.zero,
+                _ => { });
+
+            Assert.That(configured.IsSuccess, Is.True, configured.Error);
+            host.Tick(0.45f);
+            Assert.That(host.IsCombatActive, Is.True);
+
+            Assert.That(host.IssuePlayerPreciseOrder(0, commandWindowActive: false).IsFailure, Is.True);
+            Assert.That(host.CommandBoard.PreciseOrders, Is.Empty);
+
+            Result issued = host.IssuePlayerPreciseOrder(0, commandWindowActive: true);
+
+            Assert.That(issued.IsSuccess, Is.True, issued.Error);
+            Assert.That(host.CommandBoard.TryGetPreciseOrder(
+                host.PlayerUnitId,
+                host.CombatState.ElapsedSeconds,
+                out PreciseOrder order), Is.True);
+            Assert.That(order.UnitId, Is.EqualTo(host.PlayerUnitId));
+            Assert.That(order.AbilityId, Is.EqualTo("player-strike"));
+            Assert.That(order.TargetUnitId, Is.Not.Empty);
+        }
+
+        [Test]
         public void Configure_RejectsBossKindMismatch()
         {
             GameObject root = Track(new GameObject("GeneratedEncounterMismatchTest"));

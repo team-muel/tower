@@ -8,14 +8,24 @@ namespace Tower.Floor
     /// <summary>
     /// Minimal package-β command surface for the generated run.
     ///
-    /// F1-F3 select a companion, 1/2/3 set Assault/Guard/Focus, and Q issues
-    /// that companion's first ready ability against the nearest enemy. Q is
-    /// accepted only while Left Shift bullet-time is the active command window.
-    /// The input layer is intentionally thin; all validation lives in Core or
+    /// Z/X/C/V choose the player's corresponding loadout slot and issue a
+    /// precise ability order. F1-F3 select a companion, 1/2/3 set
+    /// Assault/Guard/Focus, and Q issues that companion's first ready ability
+    /// against the nearest enemy. Precise orders are accepted only while Left
+    /// Shift bullet-time is the active command window. The input layer is
+    /// intentionally thin; all validation lives in Core or
     /// GeneratedFloorEncounterHost.
     /// </summary>
     public sealed class RunCommandInput : MonoBehaviour
     {
+        private static readonly KeyCode[] PlayerAbilityKeys =
+        {
+            KeyCode.Z,
+            KeyCode.X,
+            KeyCode.C,
+            KeyCode.V
+        };
+
         private ForestFloorRenderer floor;
         private int selectedIndex;
         private string feedback = string.Empty;
@@ -30,7 +40,13 @@ namespace Tower.Floor
         {
             GeneratedFloorEncounterHost encounter = floor == null ? null : floor.ActiveEncounter;
             if (encounter == null || encounter.IsResolved || encounter.IsPlayerDefeated
-                || encounter.Companions == null || encounter.Companions.Count == 0)
+                || encounter.CombatState == null)
+            {
+                return;
+            }
+
+            HandlePlayerAbilityInput(encounter);
+            if (encounter.Companions == null || encounter.Companions.Count == 0)
             {
                 return;
             }
@@ -60,6 +76,35 @@ namespace Tower.Floor
                 ShowResult(encounter.IssueBestPreciseOrder(
                     selected.UnitId,
                     floor.IsSlowMoCommandWindow));
+            }
+        }
+
+        public static int AbilitySlotForKey(KeyCode key)
+        {
+            switch (key)
+            {
+                case KeyCode.Z: return 0;
+                case KeyCode.X: return 1;
+                case KeyCode.C: return 2;
+                case KeyCode.V: return 3;
+                default: return -1;
+            }
+        }
+
+        private void HandlePlayerAbilityInput(GeneratedFloorEncounterHost encounter)
+        {
+            for (int index = 0; index < PlayerAbilityKeys.Length; index++)
+            {
+                KeyCode key = PlayerAbilityKeys[index];
+                if (!Input.GetKeyDown(key))
+                {
+                    continue;
+                }
+
+                ShowResult(encounter.IssuePlayerPreciseOrder(
+                    AbilitySlotForKey(key),
+                    floor.IsSlowMoCommandWindow));
+                return;
             }
         }
 
@@ -95,14 +140,15 @@ namespace Tower.Floor
             }
 
             GeneratedFloorEncounterHost encounter = floor.ActiveEncounter;
-            if (encounter.Companions == null || encounter.Companions.Count == 0)
+            int companionCount = encounter.Companions == null ? 0 : encounter.Companions.Count;
+            if (encounter.CombatState == null)
             {
                 return;
             }
 
             float width = 390f;
             CommandTelemetrySnapshot telemetry = encounter.CommandTelemetry;
-            float height = 104f + (encounter.Companions.Count * 22f);
+            float height = 124f + (companionCount * 22f);
             Rect panel = new Rect(14f, Screen.height - height - 14f, width, height);
             GUI.Box(panel, GUIContent.none);
 
@@ -113,22 +159,26 @@ namespace Tower.Floor
             };
             GUI.Label(
                 new Rect(panel.x + 8f, panel.y + 5f, width - 16f, 20f),
-                "F1-F3 select · 1 Assault · 2 Guard · 3 Focus · Q precise (Left Shift)",
+                "Z/X/C/V player precise (Left Shift)",
                 style);
             GUI.Label(
                 new Rect(panel.x + 8f, panel.y + 25f, width - 16f, 20f),
+                "F1-F3 select · 1 Assault · 2 Guard · 3 Focus · Q precise",
+                style);
+            GUI.Label(
+                new Rect(panel.x + 8f, panel.y + 45f, width - 16f, 20f),
                 "Commands  stance:" + telemetry.StanceCommands
                     + "  precise:" + telemetry.PreciseOrdersIssued
                     + "  used:" + telemetry.PreciseOrdersConsumed,
                 style);
             GUI.Label(
-                new Rect(panel.x + 8f, panel.y + 45f, width - 16f, 20f),
+                new Rect(panel.x + 8f, panel.y + 65f, width - 16f, 20f),
                 "replaced:" + telemetry.PreciseOrdersReplaced
                     + "  fallback:" + telemetry.PreciseOrderFallbacks
                     + "  expired:" + telemetry.PreciseOrdersExpired,
                 style);
 
-            for (int index = 0; index < encounter.Companions.Count; index++)
+            for (int index = 0; index < companionCount; index++)
             {
                 CompanionEntity companion = encounter.Companions[index];
                 if (companion == null) continue;
@@ -140,7 +190,7 @@ namespace Tower.Floor
                     ? string.Empty
                     : " -> " + assignment.FocusTargetId;
                 GUI.Label(
-                    new Rect(panel.x + 8f, panel.y + 66f + (index * 22f), width - 16f, 20f),
+                    new Rect(panel.x + 8f, panel.y + 86f + (index * 22f), width - 16f, 20f),
                     marker + companion.DisplayName + "  ["
                         + CommandStanceRules.DisplayName(assignment.Stance) + "]" + target,
                     style);
