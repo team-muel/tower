@@ -105,6 +105,14 @@ Draft PR을 Ready 또는 merge 상태로 바꾸기 전에 가능한 범위에서
 - Verification
 - Notion handoff link
 
+
+## 휴대용 vault 미러
+
+- Notion [Tower — Local Vault Mirror (2026-08-18)](https://app.notion.com/p/3c0194007a5481bda92de69db12dd5c0)는 로컬 Tower vault의 Markdown 51개를 파일별 페이지로 보존한다.
+- 원본 정본은 `C:\\Users\\fancy\\Personal Agent Memory\\40_Projects\\Tower\\`에 남는다. Notion 미러는 휴대폰·브라우저·Codex 외 제품에서 읽고 작업을 시작하기 위한 휴대용 복제본이다.
+- 각 페이지의 Source metadata에는 원본 경로, 수정일, 크기, SHA-256, Migration batch가 있다. Notion에서 편집을 제안할 때는 원본 파일명과 네 축 상태를 함께 기록한다.
+- 미러와 로컬 원본이 달라지면 자동으로 어느 쪽을 덮어쓰지 말고 동기화 대기로 표시한 뒤 데스크톱 정합 게이트에서 수렴한다.
+
 ## 현재 알려진 정합 주의
 
 - 2026-08-18 기준 GitHub `main`의 `AGENTS.md`에는 “3D 그리드 턴제”가 남아 있지만, 로컬 `13 Combat Model v0.1.md` §8은 2026-07-13에 연속공간·실시간 능동 오토배틀러로 재정본화됐다.
