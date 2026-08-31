@@ -1,16 +1,30 @@
-# Tower (코드네임 잠정)
+# Tower — Gen 1 reference asset
 
-싱글플레이 3D(잠정) 던전 크롤러 — "플레이어가 탑을 오른다".
-Unity 6 LTS / PC(Windows) / Steam 목표 / 유료.
+> **Status (2026-08-31):** this repository is the completed Tower **Gen 1 implementation reference**, not the landing target for the current product.
+>
+> On 2026-08-21 the owner confirmed a separate AA action game as **Tower Gen 2**. Its GitHub repository has not been created yet. See the [Tower hub](https://app.notion.com/p/3ba194007a54814b9404cf6bad57a812) and the [Gen 2 decision](https://app.notion.com/p/3c3194007a548196aaa3e14b1c7755e1).
 
-## 개발 모델
+Gen 1 explored a single-player 3D Tower crawler in Unity 6 for Windows/Steam. It completed the structural run loop and automated completion gate, but it was retired as the active product because it did not prove the intended game feel.
 
-- 1인(설계) + 에이전트 교대 작업자 모델 (Claude / Codex / 필요 시 Hermes). 기본 싱글 턴.
-- **설계·기획 정본**: 로컬 vault `Personal Agent Memory/40_Projects/Tower/` (진입점 `00 Current Status.md`).
-- **코드 정본**: 이 레포.
-- 제약: 예산 0원 (무료 에셋 + AI 생성만), 기존 Muel 인프라 미사용, 호스트 우선 작업.
+## What remains authoritative here
 
-## 셋업
+- Historical Gen 1 code, task briefs, tests, scenes, assets, and build contracts.
+- T62 evidence for the fresh-run → encounters → boss → conquest → save → resume flow.
+- Engineering lessons, failure modes, and validation-gate patterns that may inform Gen 2.
+- The implementation state of Gen 1 at its final `main` commit.
 
-- Unity 6 LTS (Unity Hub), 라이선스 Personal.
-- git LFS 필수: `git lfs install` 후 clone/pull.
+Gen 1 code is **not** automatically the implementation base for Gen 2. Durable lore, design pillars, decision history, failure notes, and gate discipline are selected separately through Notion and the local Tower vault.
+
+## Repository policy
+
+- Do not start new gameplay, Unity scene, prefab, asset, or feature work in this repository.
+- Allow only archival state corrections, security maintenance, and evidence-preserving fixes.
+- Do not interpret an old task brief or `AGENTS.md` summary as the current Gen 2 product direction.
+- Keep Unity/runtime claims tied to the original build and test evidence; documentation-only work does not create new runtime verification.
+
+## Historical environment
+
+- Unity: **6000.3.19f1**
+- Target: PC (Windows), Steam
+- Git LFS required: run `git lfs install` before clone/pull
+- Historical design integration point: local vault `Personal Agent Memory/40_Projects/Tower/`
